@@ -1,0 +1,23 @@
+{
+  "name": "boluck",
+  "private": true,
+  "description": "Boluck — Smart-contract bounty escrow and contributor payments on Stellar.",
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "start": "turbo run start",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "format": "prettier --write \"**/*.{ts,tsx,md,css}\"",
+    "check-types": "turbo run check-types"
+  },
+  "devDependencies": {
+    "prettier": "^3.6.2",
+    "turbo": "^2.11.13",
+    "typescript": "^5.9.3"
+  },
+  "packageManager": "pnpm@12.14.0",
+  "engines": {
+    "node": ">=22"
+  }
+}
