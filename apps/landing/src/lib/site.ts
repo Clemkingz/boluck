@@ -12,6 +12,7 @@ const SITE_KEYWORDS = [
 	"USDC bounties",
 	"contributor payments",
 	"web3 bounties",
+	"Varial wallet",
 	"Freighter wallet",
 	"Stellar Testnet",
 ];

@@ -14,10 +14,26 @@ const ROLES: { id: Role; label: string; sub: string; icon: typeof BriefcaseBusin
 
 /**
  * Live: every wallet hands off to the app, which detects the installed wallets and signs in for real.
- * Demo (`NEXT_PUBLIC_DEMO_MODE=1`): Freighter is "not installed" (setup walkthrough); xBull and Albedo are "ready".
+ * Demo (`NEXT_PUBLIC_DEMO_MODE=1`): Varial is "not installed" (setup walkthrough); xBull and Albedo are "ready".
  */
 const WALLETS = [
-	{ id: "freighter", name: "Freighter", kind: "Extension", ready: false, recommended: true, url: "https://www.freighter.app/" },
+	{
+		id: "freighter",
+		name: "Varial",
+		kind: "Browser extension · formerly Freighter",
+		ready: false,
+		recommended: true,
+		url: "https://varialwallet.com/",
+	},
+	{
+		id: "varial_mobile",
+		name: "Varial Mobile",
+		kind: "Varial app · WalletConnect",
+		ready: true,
+		recommended: true,
+		url: "https://varialwallet.com/",
+		liveOnly: true,
+	},
 	{ id: "xbull", name: "xBull", kind: "Extension & mobile", ready: true, url: "https://xbull.app/" },
 	{ id: "albedo", name: "Albedo", kind: "Web", ready: true, url: "https://albedo.link/" },
 	{ id: "lobstr", name: "LOBSTR", kind: "Extension & mobile", ready: false, url: "https://lobstr.co/" },
@@ -26,10 +42,15 @@ const WALLETS = [
 ];
 
 const SETUP = [
-	{ t: "Install Freighter", s: "A free browser wallet for Stellar.", cta: "Get Freighter", href: "https://www.freighter.app/" },
+	{
+		t: "Install Varial",
+		s: "A free Stellar wallet (formerly Freighter): browser extension or phone app.",
+		cta: "Get Varial",
+		href: "https://varialwallet.com/",
+	},
 	{
 		t: "Switch to Testnet",
-		s: "In Freighter settings, choose “Test Net”.",
+		s: "In Varial's settings, choose “Test Net”.",
 		cta: "How to",
 		href: "https://developers.stellar.org/docs/build/guides/freighter/connect-testnet",
 	},
@@ -88,7 +109,7 @@ export function WalletChooser({ className }: { className?: string }) {
 
 			<h3 className="mt-8 font-display text-base font-bold text-ink">2 · Choose a Stellar wallet</h3>
 			<ul className="stagger mt-4 space-y-3">
-				{WALLETS.map((w) => {
+				{WALLETS.filter((w) => !DEMO_MODE || !("liveOnly" in w)).map((w) => {
 					const classes = cn(
 						"group flex w-full items-center gap-3 rounded-[var(--radius-md)] border p-4 text-left transition-all duration-200 hover:-translate-y-px",
 						w.recommended ? "border-primary bg-deep/50 hover:bg-deep/70" : "border-line bg-canvas/40 hover:border-subtle",
@@ -150,10 +171,10 @@ export function WalletChooser({ className }: { className?: string }) {
 					role="alert"
 				>
 					<p className="flex items-center gap-2 text-sm font-semibold text-ink">
-						<AlertTriangle className="size-4 text-attention" /> Couldn&apos;t connect Freighter
+						<AlertTriangle className="size-4 text-attention" /> Couldn&apos;t connect Varial
 					</p>
 					<p className="mt-2 text-[10px] leading-relaxed text-muted sm:text-xs">
-						Freighter doesn&apos;t seem to be installed in this browser.
+						Varial doesn&apos;t seem to be installed in this browser.
 					</p>
 					<div className="mt-3 flex items-center gap-4 text-xs">
 						<a

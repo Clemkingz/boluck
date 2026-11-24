@@ -43,7 +43,8 @@ pnpm --filter web dev      # one app
 
 ## Try the flow (live, Testnet)
 
-1. Install Freighter (or xBull, Albedo, LOBSTR, Rabet, Hana) and switch it to **Testnet**. Create two accounts: an
+1. Install Varial (formerly Freighter: the browser extension, or the phone app to use **Varial Mobile**), or xBull,
+   Albedo, LOBSTR, Rabet or Hana, and switch it to **Testnet**. Create two accounts: an
    issuer and a contributor.
 2. Fund both with XLM at [Friendbot](https://lab.stellar.org/account/fund), add the USDC trustline, and get test
    USDC for the issuer from [Circle's faucet](https://faucet.circle.com).

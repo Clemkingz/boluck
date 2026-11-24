@@ -5,10 +5,16 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Spinner } from "@repo/ui/spinner";
 import { LIVE } from "@/lib/api/config";
-import { isWalletAvailable } from "@/features/wallet/kit";
+import {
+	detectPlatform,
+	inVarialApp,
+	setAppNotOpenedHandler,
+	varialAppStoreUrl,
+	walletAvailability,
+} from "@/features/wallet/kit";
 import { Button, ButtonLink } from "@repo/ui/button";
 import { IconTile } from "@repo/ui/panel";
-import { WALLETS, walletName, type WalletOption } from "@/features/wallet/wallets";
+import { VARIAL_STORES, WALLETS, walletName, type WalletOption } from "@/features/wallet/wallets";
 import { shortAddress } from "@repo/stellar/format";
 import { ACCOUNT_NAMES } from "@/lib/api/mock-data";
 import type { Role, WalletId } from "@repo/stellar/bounty";
@@ -24,8 +30,10 @@ const ROLES: { id: Role; label: string; sub: string; icon: typeof BriefcaseBusin
 
 /**
  * "Connect your wallet" panel from the landing design: pick a role, pick a Stellar wallet.
- * Live: detects installed wallets, then connect → network check → sign the sign-in challenge.
- * Demo: Freighter is simulated as not installed (error + setup walkthrough); xBull and Albedo as ready.
+ * Live: detects installed wallets, then connect → network check → sign the sign-in challenge. Desktop offers the
+ * browser extensions (Varial first) and Varial Mobile by QR code; phones offer Varial Mobile, which opens the Varial
+ * app (and Albedo, a web wallet); inside Varial's in-app browser only Varial Mobile.
+ * Demo: Freighter/Varial is simulated as not installed (error + setup walkthrough); xBull and Albedo as ready.
  */
 export function ConnectPanel({
 	redirectTo = "/overview",
@@ -50,40 +58,65 @@ export function ConnectPanel({
 	const [flow, setFlow] = useState<{ wallet: WalletId; startAt: number } | null>(LIVE ? null : (autoStart ?? null));
 	const [available, setAvailable] = useState<Partial<Record<WalletId, boolean>>>({});
 	const [connecting, setConnecting] = useState<WalletId | null>(null);
+	/** Set when the Varial app didn't open on this phone; `retry` opens it again with the same pairing. */
+	const [appMissing, setAppMissing] = useState<{ retry: () => void } | null>(null);
+	// Device facts are only known in the browser (the server render assumes desktop).
+	const [device, setDevice] = useState<{ phone: boolean; inApp: boolean; store: string }>({
+		phone: false,
+		inApp: false,
+		store: VARIAL_STORES.site,
+	});
 	// Landing hand-off (`?wallet=`): highlight the wallet the person already picked.
 	const picked = autoStart?.wallet;
 
 	useEffect(() => {
 		if (!LIVE) return;
 		let alive = true;
-		// Extensions inject themselves shortly after load; check now and once more a moment later.
-		const check = () =>
-			Promise.all(WALLETS.map(async (w) => [w.id, await isWalletAvailable(w.id)] as const)).then(
-				(pairs) => alive && setAvailable(Object.fromEntries(pairs)),
-			);
+		const platform = detectPlatform();
+		// eslint-disable-next-line react-hooks/set-state-in-effect -- browser-only facts, read once after mount
+		setDevice({ phone: platform !== "desktop", inApp: inVarialApp(), store: varialAppStoreUrl(platform) });
+		setAppNotOpenedHandler((retry) => alive && setAppMissing({ retry }));
+		// Extensions inject their content scripts after the page loads and can take a moment to answer: check now,
+		// again shortly after, and whenever the tab comes back (e.g. after installing or enabling Varial).
+		const check = () => walletAvailability().then((a) => alive && setAvailable(a));
 		void check();
-		const t = setTimeout(check, 1500);
+		const timers = [setTimeout(check, 1500), setTimeout(check, 4000)];
+		const onFocus = () => document.visibilityState === "visible" && void check();
+		window.addEventListener("focus", onFocus);
+		document.addEventListener("visibilitychange", onFocus);
 		return () => {
 			alive = false;
-			clearTimeout(t);
+			timers.forEach(clearTimeout);
+			window.removeEventListener("focus", onFocus);
+			document.removeEventListener("visibilitychange", onFocus);
+			setAppNotOpenedHandler(null);
 		};
 	}, []);
+
+	const shown = !LIVE
+		? WALLETS.filter((w) => w.id !== "varial_mobile")
+		: device.inApp
+			? WALLETS.filter((w) => w.id === "varial_mobile")
+			: WALLETS.filter((w) => w.platforms.includes(device.phone ? "phone" : "desktop"));
 
 	const stateOf = (w: WalletOption) =>
 		LIVE ? (available[w.id] === false ? "install" : "ready") : installed.includes(w.id) ? "ready" : w.state;
 
 	const choose = async (w: WalletOption) => {
 		if (LIVE) {
-			if (available[w.id] === false) {
-				if (w.id === "freighter") setFailed("freighter");
-				else window.open(w.installUrl, "_blank", "noopener,noreferrer");
+			// Detection can miss an extension that answers slowly, so Varial is always tried; other extensions that
+			// weren't detected go to their install page.
+			if (available[w.id] === false && w.id !== "freighter" && w.id !== "varial_mobile") {
+				window.open(w.installUrl, "_blank", "noopener,noreferrer");
 				return;
 			}
 			setFailed(null);
+			setAppMissing(null);
 			setConnecting(w.id);
-			const ok = await connect(w.id, role);
+			const result = await connect(w.id, role);
 			setConnecting(null);
-			if (ok) router.push(redirectTo);
+			if (result === "missing") setFailed(w.id);
+			else if (result) router.push(redirectTo);
 			return;
 		}
 		if (stateOf(w) === "ready") {
@@ -177,7 +210,7 @@ export function ConnectPanel({
 
 					<h3 className="mt-8 font-display text-base font-bold text-ink">2 · Choose a Stellar wallet</h3>
 					<ul className="stagger mt-4 space-y-3">
-						{WALLETS.map((w) => {
+						{shown.map((w) => {
 							const ready = stateOf(w) === "ready";
 							return (
 								<li key={w.id}>
@@ -213,7 +246,21 @@ export function ConnectPanel({
 										) : ready ? (
 											<span className="flex items-center gap-1.5 text-[10px] font-semibold text-primary">
 												<span className="size-1.5 rounded-full bg-primary" />{" "}
-												{LIVE ? (w.id === "albedo" ? "Web" : "Detected") : "Ready"}
+												{!LIVE
+													? "Ready"
+													: w.id === "albedo"
+														? "Web"
+														: w.id === "varial_mobile"
+															? device.inApp
+																? "In the app"
+																: device.phone
+																	? "Opens the app"
+																	: "QR code"
+															: "Detected"}
+											</span>
+										) : LIVE && w.id === "freighter" ? (
+											<span className="flex items-center gap-1 text-[10px] text-muted transition-colors group-hover:text-ink">
+												Not detected · try anyway
 											</span>
 										) : (
 											<span className="flex items-center gap-1 text-xs text-muted transition-colors group-hover:text-ink">
@@ -226,29 +273,80 @@ export function ConnectPanel({
 						})}
 					</ul>
 
-					{failed === "freighter" && (
+					{LIVE && appMissing && (
+						<div className="mt-5 animate-pop-in rounded-[var(--radius-md)] border border-review/70 bg-review/10 p-5" role="alert">
+							<p className="flex items-center gap-2 text-sm font-semibold text-ink">
+								<AlertTriangle className="size-4 text-review" /> Varial didn&apos;t open
+							</p>
+							<p className="mt-2 text-[10px] leading-relaxed text-muted sm:text-xs">
+								Install the Varial app (listed as Freighter in the stores), set it to Testnet, then try again.
+							</p>
+							<div className="mt-3 flex flex-wrap items-center gap-4 text-xs">
+								<a
+									href={device.store}
+									target="_blank"
+									rel="noopener noreferrer"
+									className="inline-flex items-center gap-1 font-semibold text-review hover:underline"
+								>
+									Get Varial <ExternalLink className="size-3" />
+								</a>
+								<button onClick={appMissing.retry} className="font-semibold text-primary hover:underline">
+									Open Varial again
+								</button>
+							</div>
+						</div>
+					)}
+
+					{LIVE && failed && failed !== "varial_mobile" && (
 						<div
 							className="mt-5 animate-pop-in rounded-[var(--radius-md)] border border-attention/80 bg-attention/10 p-5"
 							role="alert"
 						>
 							<p className="flex items-center gap-2 text-sm font-semibold text-ink">
-								<AlertTriangle className="size-4 text-attention" /> Couldn&apos;t connect Freighter
+								<AlertTriangle className="size-4 text-attention" /> Couldn&apos;t reach {walletName(failed)}
 							</p>
 							<p className="mt-2 text-[10px] leading-relaxed text-muted sm:text-xs">
-								Freighter doesn&apos;t seem to be installed in this browser.
-								{LIVE && " Install it, reload this page, and switch it to Testnet."}
+								{failed === "freighter"
+									? "The Varial extension didn't answer. Install it (the Chrome Web Store still lists it as Freighter), or make sure it's enabled and unlocked, then reload this page."
+									: `${walletName(failed)} didn't answer. Install or unlock it, then reload this page.`}
+							</p>
+							<div className="mt-3 flex flex-wrap items-center gap-4 text-xs">
+								<a
+									href={WALLETS.find((w) => w.id === failed)?.installUrl}
+									target="_blank"
+									rel="noopener noreferrer"
+									className="inline-flex items-center gap-1 font-semibold text-review hover:underline"
+								>
+									Install <ExternalLink className="size-3" />
+								</a>
+								{failed === "freighter" && (
+									<button
+										onClick={() => void choose(WALLETS.find((w) => w.id === "varial_mobile")!)}
+										className="font-semibold text-primary hover:underline"
+									>
+										Use Varial Mobile instead
+									</button>
+								)}
+								<button onClick={() => setFailed(null)} className="text-muted hover:text-ink">
+									Dismiss
+								</button>
+							</div>
+						</div>
+					)}
+
+					{!LIVE && failed === "freighter" && (
+						<div
+							className="mt-5 animate-pop-in rounded-[var(--radius-md)] border border-attention/80 bg-attention/10 p-5"
+							role="alert"
+						>
+							<p className="flex items-center gap-2 text-sm font-semibold text-ink">
+								<AlertTriangle className="size-4 text-attention" /> Couldn&apos;t connect Varial
+							</p>
+							<p className="mt-2 text-[10px] leading-relaxed text-muted sm:text-xs">
+								Varial (formerly Freighter) doesn&apos;t seem to be installed in this browser.
 							</p>
 							<div className="mt-3 flex items-center gap-4 text-xs">
-								{LIVE ? (
-									<a
-										href="https://www.freighter.app/"
-										target="_blank"
-										rel="noopener noreferrer"
-										className="inline-flex items-center gap-1 font-semibold text-review hover:underline"
-									>
-										Install <ExternalLink className="size-3" />
-									</a>
-								) : (
+								{
 									<button
 										onClick={() => {
 											setFailed(null);
@@ -258,7 +356,7 @@ export function ConnectPanel({
 									>
 										Install <ExternalLink className="size-3" />
 									</button>
-								)}
+								}
 								<button onClick={() => setFailed(null)} className="text-muted hover:text-ink">
 									Dismiss
 								</button>
@@ -271,14 +369,16 @@ export function ConnectPanel({
 						<ol className="mt-4 space-y-4">
 							{[
 								{
-									t: "Install Freighter",
-									s: "A free browser wallet for Stellar.",
-									cta: "Get Freighter",
-									href: "https://www.freighter.app/",
+									t: device.phone ? "Install the Varial app" : "Install Varial",
+									s: device.phone
+										? "A free Stellar wallet (formerly Freighter)."
+										: "A free browser wallet for Stellar (formerly Freighter).",
+									cta: "Get Varial",
+									href: device.phone ? device.store : VARIAL_STORES.extension,
 								},
 								{
 									t: "Switch to Testnet",
-									s: "In Freighter settings, choose “Test Net”.",
+									s: "In Varial's settings, choose “Test Net”.",
 									cta: "How to",
 									href: "https://developers.stellar.org/docs/build/guides/freighter/connect-testnet",
 								},

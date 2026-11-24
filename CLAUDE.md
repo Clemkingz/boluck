@@ -45,7 +45,8 @@ zustand, lucide. Fonts: Space Grotesk (display) + DM Sans (body) via `next/font`
 - `app/` routes. `(dashboard)/` = every wallet-gated screen (layout = `AppShell`: sidebar, top bar, wallet gate,
   `TxDialog`). Dynamic `[id]` pages read params inside `<Suspense>` (Cache Components).
 - `features/<feature>/` screens and their logic: `bounties/components/*`, `overview`, `history`, `refunds`,
-  `settings`, `wallet/components/*` + `wallets.ts` + `kit.ts` (real wallets, sign only), `escrow/store.ts` (state;
+  `settings`, `wallet/components/*` + `wallets.ts` + `kit.ts` (Stellar Wallets Kit, Testnet: Varial extension, Varial Mobile over
+  WalletConnect with a direct app hand-off on phones, xBull, Albedo, LOBSTR, Rabet, Hana; sign only), `escrow/store.ts` (state;
   demo actions), `escrow/live.ts` (live actions over the API) and `escrow/hooks.ts` (selectors).
 - `components/` app chrome (`layouts/*`, `providers/StoreHydrator`, `PageHeader`). `lib/` site config, routes,
   `api/` — `config.ts` (live/demo, API URL), `client.ts`, `types.ts`, `mappers.ts` (API → domain model),

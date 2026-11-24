@@ -20,7 +20,8 @@ export type BountyStatus =
 
 export type Role = "issuer" | "contributor";
 
-export type WalletId = "freighter" | "xbull" | "albedo" | "lobstr" | "rabet" | "hana";
+/** `freighter` = the Varial browser extension (Varial was Freighter); `varial_mobile` = the Varial app over WalletConnect. */
+export type WalletId = "freighter" | "varial_mobile" | "xbull" | "albedo" | "lobstr" | "rabet" | "hana";
 
 export type BountyIcon = "layout" | "code" | "sparkle" | "doc" | "shield" | "palette";
 

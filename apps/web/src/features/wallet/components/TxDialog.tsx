@@ -5,6 +5,7 @@ import { Button } from "@repo/ui/button";
 import { Spinner } from "@repo/ui/spinner";
 import { Modal } from "@repo/ui/modal";
 import { walletName } from "@/features/wallet/wallets";
+import { needsWalletApp, openWalletApp } from "@/features/wallet/kit";
 import { cn } from "@/lib/utils";
 import { useAppStore } from "@/features/escrow/store";
 
@@ -82,6 +83,11 @@ export function TxDialog() {
 								<Spinner className="size-4 text-primary" />
 								{tx.waitingFor === "prepare" ? "Preparing the transaction…" : `Approve the request in ${name}`}
 							</p>
+							{tx.waitingFor === "wallet" && needsWalletApp(provider) && (
+								<Button fullWidth onClick={() => void openWalletApp()}>
+									Open Varial to approve
+								</Button>
+							)}
 							<Button variant="ghost" fullWidth onClick={rejectTx}>
 								Cancel
 							</Button>

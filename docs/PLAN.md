@@ -52,3 +52,6 @@ The app is connected to the Boluck API (Railway) and real Stellar wallets on Tes
   with a preflight request once deployed.
 - Guide vs. backend note on `auto_release`: the guide (§7) shows it to the contributor as a "Claim payment"
   fallback; the app does that only when the server lists it in `availableActions`.
+- **Admin (on hold, 2026-11-24):** waiting for the backend. The API has no admin routes (every route is scoped to the
+  connected wallet's own bounties) and the Figma file has no admin screens. Decided: admins sign in with their Stellar
+  wallet like everyone else, and only allow-listed addresses get in. The backend must enforce the allow-list.

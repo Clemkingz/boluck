@@ -16,7 +16,15 @@ import { api, ApiError, setToken, setUnauthorizedHandler } from "@/lib/api/clien
 import { toBalance, toBounty, toSubmissions, toTransactions } from "@/lib/api/mappers";
 import type { ActionDto, PrepareActionDto } from "@/lib/api/types";
 import { sleep } from "@/lib/utils";
-import { getWalletAddress, getWalletPassphrase, signWithWallet, WalletRejected } from "@/features/wallet/kit";
+import {
+	disconnectWallet,
+	getCurrentAddress,
+	getWalletAddress,
+	getWalletPassphrase,
+	signWithWallet,
+	WalletNotInstalled,
+	WalletRejected,
+} from "@/features/wallet/kit";
 import { walletName } from "@/features/wallet/wallets";
 import { signatureGate, type AppState } from "./store";
 
@@ -218,8 +226,9 @@ export function createLiveActions(set: Set, get: Get): Partial<AppState> {
 
 		set({ tx: { ...base, waitingFor: "wallet" } });
 		// Actions must be signed by the session's wallet: if the person switched accounts, sign in again.
-		const current = await getWalletAddress(wallet.provider).catch(() => wallet.address);
-		if (current !== wallet.address) {
+		// Read silently: asking WalletConnect for an address would start a new pairing.
+		const current = await getCurrentAddress(wallet.provider);
+		if (current && current !== wallet.address) {
 			set({ tx: IDLE_TX });
 			clearSession();
 			toast.warning("Your wallet switched accounts", {
@@ -330,6 +339,10 @@ export function createLiveActions(set: Set, get: Get): Partial<AppState> {
 				return true;
 			} catch (e) {
 				noteError(e);
+				if (e instanceof WalletNotInstalled) {
+					// The connect panel explains how to install or enable it.
+					return "missing";
+				}
 				if (e instanceof WalletRejected) {
 					toast.warning("Connection cancelled", { description: `Nothing was signed in ${walletName(provider)}.` });
 				} else {
@@ -341,6 +354,7 @@ export function createLiveActions(set: Set, get: Get): Partial<AppState> {
 
 		disconnect: () => {
 			void api.logout().catch(() => {});
+			void disconnectWallet();
 			clearSession();
 			toast.info("Wallet disconnected", { description: "Connect again any time to pick up where you left off." });
 		},

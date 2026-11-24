@@ -138,8 +138,11 @@ export interface AppState {
 	updateDraft: (id: string, input: CreateBountyInput) => Promise<boolean>;
 	deleteDraft: (id: string) => Promise<boolean>;
 
-	/** Resolves true when connected. Live: wallet prompt → network check → signed sign-in challenge. */
-	connect: (provider: WalletId, role: Role) => Promise<boolean>;
+	/**
+	 * Resolves true when connected. Live: wallet prompt → network check → signed sign-in challenge; "missing" when the
+	 * wallet's extension didn't answer (not installed or disabled).
+	 */
+	connect: (provider: WalletId, role: Role) => Promise<boolean | "missing">;
 	disconnect: () => void;
 	setRole: (role: Role) => void;
 	setSimulateFailures: (value: boolean) => void;
