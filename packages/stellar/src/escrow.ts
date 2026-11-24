@@ -1,11 +1,11 @@
 /**
- * Simulated bounty escrow contract rules.
+ * Bounty escrow rules.
  *
- * Each guard mirrors a rule from the PRD ("Smart contract security rules" and
- * "Recommended cancellation rules"). The real contract enforces these on-chain;
- * the UI uses the same guards to decide which actions to show and to reject
- * invalid calls in the mock. A guard returns `null` when allowed, otherwise a
- * human-readable rejection reason.
+ * Each guard mirrors a rule from the PRD ("security rules" and "recommended
+ * cancellation rules"). In live mode the Boluck API enforces them and reports
+ * what is allowed in `availableActions`; these guards are client-side
+ * pre-checks there, and the rules of the in-browser demo. A guard returns
+ * `null` when allowed, otherwise a human-readable rejection reason.
  */
 import type { Balance, Bounty } from "./bounty";
 import { isStellarAddress } from "./address";
@@ -34,15 +34,6 @@ export function canAssign(b: Bounty, caller: string | undefined, contributor: st
 	if (b.escrowBalance < b.rewardAmount) return "Reward is not fully funded.";
 	if (!isStellarAddress(contributor)) return "Enter a valid Stellar address (G…, 56 characters).";
 	if (contributor === b.issuer) return "The issuer cannot be the contributor.";
-	return null;
-}
-
-/** Open bounties (funded, no contributor) can be claimed by any other wallet. */
-export function canClaim(b: Bounty, caller?: string): Guard {
-	if (!caller) return "Connect a wallet first.";
-	if (caller === b.issuer) return "You can't claim your own bounty.";
-	if (b.status !== "funded" || b.contributor) return "This bounty is not open for claiming.";
-	if (b.escrowBalance < b.rewardAmount) return "Reward is not fully funded.";
 	return null;
 }
 

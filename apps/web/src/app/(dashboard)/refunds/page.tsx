@@ -5,7 +5,7 @@ import { RefundsView } from "@/features/refunds/Refunds";
 
 export const metadata: Metadata = {
 	title: "Refunds & safety",
-	description: "Check cancellation eligibility and refund rules enforced by the Boluck escrow contract.",
+	description: "Check cancellation eligibility and refund rules enforced by Boluck's escrow on Stellar.",
 };
 
 export default function RefundsPage() {

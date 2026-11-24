@@ -23,7 +23,7 @@ export default function NotFound() {
 								Back to workspace
 							</ButtonLink>
 							<ButtonLink href="/bounties" size="lg" variant="secondary" icon={<Compass />}>
-								Explore bounties
+								Your bounties
 							</ButtonLink>
 						</>
 					}

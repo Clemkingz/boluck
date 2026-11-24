@@ -4,7 +4,6 @@ import { ArrowRight, CircleDollarSign, FileCheck2, Fingerprint, FolderOpen, Lock
 import Link from "next/link";
 import { useMemo } from "react";
 import { ActivityFeed } from "@/features/bounties/components/ActivityFeed";
-import { BountyIcon } from "@/features/bounties/components/BountyIcon";
 import { BountyTable } from "@/features/bounties/components/BountyTable";
 import { EscrowOrb } from "@/features/bounties/components/EscrowOrb";
 import { StatCard } from "@/features/bounties/components/StatCard";
@@ -16,11 +15,13 @@ import { EmptyState } from "@repo/ui/misc";
 import { Panel } from "@repo/ui/panel";
 import { Reveal } from "@repo/ui/reveal";
 import { ACTIVE_STATUSES } from "@repo/stellar/status";
-import { formatDate, formatUsd, pad2 } from "@repo/stellar/format";
+import { formatUsd, pad2 } from "@repo/stellar/format";
 import type { Bounty, Role } from "@repo/stellar/bounty";
 import { cn } from "@/lib/utils";
 import { useAppStore } from "@/features/escrow/store";
-import { useMyTransactions, useOpenOpportunities, useRoleBounties } from "@/features/escrow/hooks";
+import { useMyTransactions, useRoleBounties } from "@/features/escrow/hooks";
+import { LIVE } from "@/lib/api/config";
+import { toTransactions } from "@/lib/api/mappers";
 
 export function OverviewView() {
 	const role = useAppStore((s) => s.role);
@@ -29,7 +30,7 @@ export function OverviewView() {
 			<PageHeader
 				eyebrow="One workspace · Two sides of every bounty"
 				title="Your Boluck workspace."
-				description="Create funded opportunities or find verified work and follow every reward through to payment."
+				description="Post funded bounties, deliver assigned work, and follow every reward through to payment."
 				actions={<RoleToggle />}
 			/>
 			<div key={role} className="animate-fade-up">
@@ -39,7 +40,7 @@ export function OverviewView() {
 	);
 }
 
-/** Issuer / Contributor buttons. Switching also switches the demo wallet. */
+/** Issuer / Contributor views. Live: a filter over one wallet's bounties. Demo: also switches the demo wallet. */
 export function RoleToggle() {
 	const role = useAppStore((s) => s.role);
 	const setRole = useAppStore((s) => s.setRole);
@@ -95,8 +96,20 @@ function IssuerOverview() {
 	const bounties = useRoleBounties();
 	const allBounties = useAppStore((s) => s.bounties);
 	const address = useAppStore((s) => s.wallet?.address);
-	const txs = useMyTransactions();
-	const stats = useStats(bounties);
+	const myTxs = useMyTransactions();
+	const local = useStats(bounties);
+	// Live: the PRD dashboard totals come from `GET /dashboard` (the server's view of this wallet).
+	const dashboard = useAppStore((s) => s.dashboard);
+	const recent = useMemo(() => (dashboard ? toTransactions(dashboard.recentActivity) : null), [dashboard]);
+	const txs = (LIVE && recent) || myTxs;
+	const stats = {
+		review: local.review,
+		active: LIVE && dashboard ? dashboard.activeBounties : local.active.length,
+		escrow: LIVE && dashboard ? Number(dashboard.fundedRewards) : local.escrow,
+		pending: LIVE && dashboard ? dashboard.pendingSubmissions : local.review.length,
+		completed: LIVE && dashboard ? dashboard.completedPayouts : null,
+		paid: local.paid,
+	};
 	const listed = bounties.filter((b) => b.status !== "refunded" && b.status !== "cancelled").slice(0, 5);
 
 	return (
@@ -104,7 +117,7 @@ function IssuerOverview() {
 			<Panel className="flex flex-col gap-8 p-6 sm:p-8 md:flex-row md:items-center md:justify-between">
 				<div className="max-w-xl">
 					<span className="inline-flex items-center gap-1.5 rounded-full border border-primary/70 px-2 py-1 text-[10px] font-medium text-primary uppercase">
-						<span className="size-1.5 rounded-full bg-primary" /> The contract is the promise
+						<span className="size-1.5 rounded-full bg-primary" /> Locked in escrow on Stellar
 					</span>
 					<h2 className="mt-4 font-display text-xl font-bold tracking-[-0.02em] text-ink">
 						The work is agreed. The reward is already there.
@@ -116,8 +129,8 @@ function IssuerOverview() {
 						<ButtonLink href="/bounties/new" size="sm" iconRight={<ArrowRight />} className="h-8">
 							Post a bounty
 						</ButtonLink>
-						<ButtonLink href="/bounties" size="sm" variant="secondary" className="h-8">
-							Explore opportunities
+						<ButtonLink href="/bounties?filter=issued" size="sm" variant="secondary" className="h-8">
+							Your bounties
 						</ButtonLink>
 					</div>
 				</div>
@@ -131,19 +144,23 @@ function IssuerOverview() {
 				<StatCard
 					label="Active bounties"
 					icon={<FolderOpen />}
-					value={<CountUp value={stats.active.length} format={pad2} />}
-					hint="Across all projects"
+					value={<CountUp value={stats.active} format={pad2} />}
+					hint={
+						LIVE
+							? `${dashboard?.drafts ?? 0} ${dashboard?.drafts === 1 ? "draft" : "drafts"} not yet funded`
+							: "Across all projects"
+					}
 				/>
 				<StatCard
-					label="Locked in escrow"
+					label={LIVE ? "Funded rewards" : "Locked in escrow"}
 					icon={<Lock />}
 					value={<CountUp value={stats.escrow} format={formatUsd} />}
-					hint="USDC · on-chain"
+					hint="USDC locked in escrow on Stellar"
 				/>
 				<StatCard
-					label="Ready for review"
+					label={LIVE ? "Pending submissions" : "Ready for review"}
 					icon={<FileCheck2 />}
-					value={<CountUp value={stats.review.length} format={pad2} />}
+					value={<CountUp value={stats.pending} format={pad2} />}
 					hintAccent={
 						stats.review[0] ? (
 							<Link href={`/bounties/${stats.review[0].id}/review`} className="font-semibold text-primary hover:underline">
@@ -153,14 +170,23 @@ function IssuerOverview() {
 							<span />
 						)
 					}
-					hint={stats.review.length ? "Awaiting your feedback" : "Nothing to review"}
+					hint={stats.pending ? "Awaiting review" : "Nothing to review"}
 				/>
-				<StatCard
-					label="Successfully paid"
-					icon={<CircleDollarSign />}
-					value={<CountUp value={stats.paid} format={formatUsd} />}
-					hint="Released to contributors"
-				/>
+				{stats.completed !== null ? (
+					<StatCard
+						label="Completed payouts"
+						icon={<CircleDollarSign />}
+						value={<CountUp value={stats.completed} format={pad2} />}
+						hint="Rewards released to contributors"
+					/>
+				) : (
+					<StatCard
+						label="Successfully paid"
+						icon={<CircleDollarSign />}
+						value={<CountUp value={stats.paid} format={formatUsd} />}
+						hint="Released to contributors"
+					/>
+				)}
 			</div>
 
 			<div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_392px] xl:gap-10 [&>*]:min-w-0">
@@ -189,7 +215,7 @@ function IssuerOverview() {
 					</Panel>
 				</Reveal>
 				<Reveal as="section">
-					<SectionHead title="Recent activity" description="Work you've funded or need to review." />
+					<SectionHead title="Recent activity" description="The latest confirmed steps on your bounties." />
 					<Panel className="p-6">
 						<ActivityFeed transactions={txs} bounties={allBounties} me={address} limit={4} />
 					</Panel>
@@ -202,8 +228,10 @@ function IssuerOverview() {
 						<Fingerprint className="size-5" />
 					</span>
 					<div>
-						<p className="text-xs font-semibold text-ink">Protected by smart-contract escrow</p>
-						<p className="mt-0.5 text-[10px] text-muted">Testnet preview · actual payments require the deployed contract</p>
+						<p className="text-xs font-semibold text-ink">Locked in escrow on Stellar</p>
+						<p className="mt-0.5 text-[10px] text-muted">
+							{LIVE ? "Stellar Testnet · every step has a transaction hash" : "Demo mode · simulated in this browser"}
+						</p>
 					</div>
 				</div>
 				<Link href="/refunds" className="group inline-flex items-center gap-3 text-[10px] text-ink">
@@ -216,9 +244,12 @@ function IssuerOverview() {
 
 function ContributorOverview() {
 	const assignments = useRoleBounties();
-	const opportunities = useOpenOpportunities();
 	const pending = assignments.filter((b) => ACTIVE_STATUSES.includes(b.status)).reduce((s, b) => s + b.escrowBalance, 0);
-	const paid = assignments.filter((b) => b.status === "paid").reduce((s, b) => s + b.rewardAmount, 0);
+	const dashboard = useAppStore((s) => s.dashboard);
+	const paid =
+		LIVE && dashboard
+			? Number(dashboard.earned)
+			: assignments.filter((b) => b.status === "paid").reduce((s, b) => s + b.rewardAmount, 0);
 	const next = assignments
 		.map((b) => {
 			if (b.status === "assigned") return { b, label: "Accept your assignment", href: `/bounties/${b.id}` };
@@ -236,13 +267,13 @@ function ContributorOverview() {
 						<span className="size-1.5 rounded-full bg-primary" /> Funded before you start
 					</span>
 					<h2 className="mt-4 font-display text-xl font-bold tracking-[-0.02em] text-ink">
-						Find work with the reward already secured.
+						Work with the reward already secured.
 					</h2>
 					<p className="mt-4 text-[15px] leading-7 text-muted sm:text-base">
 						Check the brief, deadline, acceptance criteria, and verified escrow before you accept an assignment.
 					</p>
-					<ButtonLink href="/bounties" size="sm" iconRight={<ArrowRight />} className="mt-6 h-9">
-						Explore funded bounties
+					<ButtonLink href="/bounties?filter=assigned" size="sm" iconRight={<ArrowRight />} className="mt-6 h-9">
+						Your assignments
 					</ButtonLink>
 				</div>
 				<div className="stagger grid grid-cols-2 gap-4 lg:w-[344px]">
@@ -255,7 +286,7 @@ function ContributorOverview() {
 					<MiniStat
 						label="Paid to you"
 						value={<CountUp value={paid} format={formatUsd} />}
-						hint="USDC demo total"
+						hint={LIVE ? "USDC received" : "USDC demo total"}
 						icon={<CircleDollarSign />}
 					/>
 				</div>
@@ -276,7 +307,11 @@ function ContributorOverview() {
 								header={false}
 							/>
 						) : (
-							<EmptyState icon={<FolderOpen />} title="No assignments yet" description="Accept a funded bounty to get started." />
+							<EmptyState
+								icon={<FolderOpen />}
+								title="No assignments yet"
+								description="Share your wallet address with an issuer. Bounties they assign to you appear here."
+							/>
 						)}
 					</Panel>
 				</Reveal>
@@ -305,47 +340,11 @@ function ContributorOverview() {
 				</Reveal>
 			</div>
 
-			<Reveal as="section">
-				<SectionHead
-					title="Open funded opportunities"
-					description={`${opportunities.length} ${opportunities.length === 1 ? "bounty" : "bounties"} with rewards secured in demo escrow.`}
-					href="/bounties?filter=open"
-					cta="Browse all"
-				/>
-				<Panel className="divide-y divide-line">
-					{opportunities.length === 0 ? (
-						<EmptyState
-							icon={<Fingerprint />}
-							title="No open bounties right now"
-							description="New funded bounties will appear here."
-						/>
-					) : (
-						opportunities.map((b) => (
-							<Link
-								key={b.id}
-								href={`/bounties/${b.id}`}
-								className="group flex flex-wrap items-center gap-4 p-6 transition-colors hover:bg-elevated/50"
-							>
-								<BountyIcon icon={b.icon} />
-								<span className="min-w-0 flex-1">
-									<span className="block truncate text-[13px] font-semibold text-ink group-hover:text-primary">{b.title}</span>
-									<span className="mt-1 block text-[10px] text-muted">
-										{b.project} · {b.id}
-									</span>
-								</span>
-								<span className="text-xs font-semibold text-ink">
-									{formatUsd(b.rewardAmount)} <span className="text-[10px] font-normal text-muted">USDC</span>
-								</span>
-								<span className="hidden w-28 text-[11px] text-muted sm:block">{formatDate(b.deadline)}</span>
-								<StatusBadge status={b.status} />
-							</Link>
-						))
-					)}
-				</Panel>
-				<p className="mt-6 text-center text-[10px] text-muted">
+			{!LIVE && (
+				<p className="text-center text-[10px] text-muted">
 					All wallet balances and escrow states shown are simulated for this testnet prototype. No real USDC moves.
 				</p>
-			</Reveal>
+			)}
 		</div>
 	);
 }

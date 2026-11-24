@@ -3,12 +3,12 @@ const SITE_NAME = "Boluck";
 const SITE_TITLE = "Boluck — Bounty escrow on Stellar";
 const SITE_TAGLINE = "A clear deal. A funded promise.";
 const SITE_DESCRIPTION =
-	"Boluck lets teams post bounties, lock the reward in an escrow smart contract, and release it to the contributor the moment their work is approved. Built on Stellar Testnet with USDC.";
+	"Boluck lets teams post bounties, lock the reward in escrow on Stellar, and release it to the contributor the moment their work is approved. Built on Stellar Testnet with USDC.";
 const SITE_KEYWORDS = [
 	"Boluck",
 	"bounty escrow",
 	"Stellar",
-	"smart contract escrow",
+	"Stellar escrow",
 	"USDC bounties",
 	"contributor payments",
 	"web3 bounties",

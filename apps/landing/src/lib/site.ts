@@ -3,12 +3,12 @@ const SITE_NAME = "Boluck";
 const SITE_TITLE = "Boluck — Bounty escrow on Stellar";
 const SITE_TAGLINE = "A clear deal. A funded promise.";
 const SITE_DESCRIPTION =
-	"Boluck lets teams post bounties, lock the reward in an escrow smart contract, and release it to the contributor the moment their work is approved. Built on Stellar Testnet with USDC.";
+	"Boluck lets teams post bounties, lock the reward in escrow on Stellar, and release it to the contributor the moment their work is approved. Built on Stellar Testnet with USDC.";
 const SITE_KEYWORDS = [
 	"Boluck",
 	"bounty escrow",
 	"Stellar",
-	"smart contract escrow",
+	"Stellar escrow",
 	"USDC bounties",
 	"contributor payments",
 	"web3 bounties",
@@ -33,11 +33,25 @@ const SITE_URL = new URL(
  */
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? (process.env.NODE_ENV === "development" ? "http://localhost:3000" : "/app");
 
+/** Same switch as the app (`apps/web/src/lib/api/config.ts`): the in-browser simulation instead of real wallets. */
+const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === "1" || process.env.NEXT_PUBLIC_DEMO_MODE === "true";
+
 const APP_LINKS = {
 	overview: `${APP_URL}/overview`,
-	explore: `${APP_URL}/bounties`,
+	bounties: `${APP_URL}/bounties`,
 	/** Wallet hand-off: the app's connect page resumes the chosen wallet + role. */
 	connect: (params: Record<string, string>) => `${APP_URL}/connect?${new URLSearchParams(params)}`,
 };
 
-export { SITE_NAME, SITE_TITLE, SITE_TAGLINE, SITE_DESCRIPTION, SITE_KEYWORDS, THEME_COLOR, SITE_URL, APP_URL, APP_LINKS };
+export {
+	SITE_NAME,
+	SITE_TITLE,
+	SITE_TAGLINE,
+	SITE_DESCRIPTION,
+	SITE_KEYWORDS,
+	THEME_COLOR,
+	SITE_URL,
+	APP_URL,
+	APP_LINKS,
+	DEMO_MODE,
+};

@@ -6,22 +6,64 @@ import { useState } from "react";
 import { TX_META } from "@repo/stellar/status";
 import { formatDateTime, shortAddress } from "@repo/stellar/format";
 import { ACCOUNT_NAMES } from "@/lib/api/mock-data";
+import { LIVE } from "@/lib/api/config";
 import { useNotifications } from "@/features/escrow/hooks";
+import { useAppStore } from "@/features/escrow/store";
 import { useClickOutside } from "@/components/layouts/WalletMenu";
 
-export function NotificationsButton() {
-	const items = useNotifications();
-	const [open, setOpen] = useState(false);
+interface Item {
+	key: string;
+	bountyId: string;
+	text: React.ReactNode;
+	at: string;
+	unread: boolean;
+}
+
+/** Live: `GET /notifications` (polled by StoreHydrator); demo: derived from the simulated transactions. */
+function useItems(): { items: Item[]; unread: boolean; onOpen: () => void } {
+	const demo = useNotifications();
 	const [seen, setSeen] = useState<string | null>(null);
+	const live = useAppStore((s) => s.notifications);
+	const unreadCount = useAppStore((s) => s.unread);
+	const markRead = useAppStore((s) => s.markNotificationsRead);
+
+	if (LIVE)
+		return {
+			items: live.map((n) => ({ key: n.id, bountyId: n.bountyId, text: n.title, at: n.at, unread: !n.read })),
+			unread: unreadCount > 0,
+			onOpen: () => void markRead(),
+		};
+	return {
+		items: demo.map((t) => ({
+			key: t.hash,
+			bountyId: t.bountyId,
+			text: (
+				<>
+					<span className="font-semibold">{ACCOUNT_NAMES[t.from] ?? shortAddress(t.from)}</span> ·{" "}
+					{TX_META[t.type].label.toLowerCase()}
+				</>
+			),
+			at: t.timestamp,
+			unread: false,
+		})),
+		unread: demo.length > 0 && demo[0].hash !== seen,
+		onOpen: () => demo[0] && setSeen(demo[0].hash),
+	};
+}
+
+export function NotificationsButton() {
+	const { items, unread, onOpen } = useItems();
+	const more = useAppStore((s) => s.more.notifications);
+	const loadMore = useAppStore((s) => s.loadMoreNotifications);
+	const [open, setOpen] = useState(false);
 	const ref = useClickOutside<HTMLDivElement>(open, () => setOpen(false));
-	const unread = items.length > 0 && items[0].hash !== seen;
 
 	return (
 		<div className="relative" ref={ref}>
 			<button
 				onClick={() => {
 					setOpen((v) => !v);
-					if (items[0]) setSeen(items[0].hash);
+					onOpen();
 				}}
 				className="relative grid size-9 place-items-center rounded-[var(--radius-sm)] text-ink transition-colors hover:bg-elevated"
 				aria-label={`Notifications${unread ? " (new)" : ""}`}
@@ -41,23 +83,36 @@ export function NotificationsButton() {
 						<p className="px-4 py-8 text-center text-xs text-muted">No updates yet.</p>
 					) : (
 						<ul className="max-h-96 divide-y divide-line overflow-y-auto">
-							{items.map((t) => (
-								<li key={t.hash}>
+							{items.map((n) => (
+								<li key={n.key}>
 									<Link
-										href={`/bounties/${t.bountyId}`}
+										href={`/bounties/${n.bountyId}`}
 										onClick={() => setOpen(false)}
-										className="block px-4 py-3 transition-colors hover:bg-elevated"
+										className="flex gap-2.5 px-4 py-3 transition-colors hover:bg-elevated"
 									>
-										<p className="text-xs text-ink">
-											<span className="font-semibold">{ACCOUNT_NAMES[t.from] ?? shortAddress(t.from)}</span> ·{" "}
-											{TX_META[t.type].label.toLowerCase()}
-										</p>
-										<p className="mt-0.5 text-[10px] text-muted">
-											{t.bountyId} · {formatDateTime(t.timestamp)}
-										</p>
+										<span
+											className={`mt-1.5 size-1.5 shrink-0 rounded-full ${n.unread ? "bg-primary" : "bg-transparent"}`}
+											aria-hidden
+										/>
+										<span className="min-w-0">
+											<span className="block text-xs text-ink">{n.text}</span>
+											<span className="mt-0.5 block text-[10px] text-muted">
+												{n.bountyId} · {formatDateTime(n.at)}
+											</span>
+										</span>
 									</Link>
 								</li>
 							))}
+							{more && (
+								<li>
+									<button
+										onClick={() => void loadMore()}
+										className="w-full px-4 py-3 text-center text-xs font-medium text-primary hover:bg-elevated"
+									>
+										Load older updates
+									</button>
+								</li>
+							)}
 						</ul>
 					)}
 				</div>

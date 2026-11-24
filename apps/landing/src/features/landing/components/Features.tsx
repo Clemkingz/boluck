@@ -6,12 +6,12 @@ const FEATURES = [
 	{
 		icon: <Lock />,
 		title: "Reward locked before work starts",
-		body: "Issuers deposit the full reward into an escrow smart contract. Contributors can check it's there first.",
+		body: "Issuers lock the full reward in escrow on Stellar. Contributors can check it's there first.",
 	},
 	{
 		icon: <ShieldCheck />,
 		title: "Only the right wallet can act",
-		body: "Only the issuer approves, only the assigned contributor submits — enforced by the contract, not trust.",
+		body: "Only the issuer approves, only the assigned contributor submits — enforced by the escrow rules, not trust.",
 	},
 	{
 		icon: <FileCheck2 />,

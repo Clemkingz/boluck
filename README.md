@@ -6,8 +6,10 @@ Issuers post a bounty and lock the USDC reward in escrow before work starts; con
 submit their work and get paid the moment it's approved. Cancellations and refunds follow clear, contract-enforced
 rules.
 
-> **Current state:** frontend only, on **mock data** — no backend, no deployed contract, no real wallet. Everything
-> is simulated in the browser so the full flow can be tried before the backend is connected.
+> **Current state:** connected to the Boluck API and real Stellar wallets on **Testnet**. The reward is locked in
+> escrow on Stellar (claimable balances run by the backend — there is no Soroban contract). API contract:
+> [docs/FRONTEND_INTEGRATION.md](docs/FRONTEND_INTEGRATION.md). Set `NEXT_PUBLIC_DEMO_MODE=1` for the in-browser
+> simulation on seed data.
 
 ## Monorepo
 
@@ -33,20 +35,27 @@ pnpm dev           # both apps
 pnpm build
 pnpm check-types
 pnpm lint
-pnpm test          # escrow contract-rule tests
+pnpm test          # escrow-rule tests
 pnpm format        # prettier (tabs, width 130)
 
 pnpm --filter web dev      # one app
 ```
 
-## Try the flow
+## Try the flow (live, Testnet)
 
-1. Open http://localhost:3002, pick **Issuer**, choose **xBull** (ready) — or **Freighter** to walk through the
-   simulated install/setup — and approve the connection.
-2. **Create a bounty** → **Fund** it → confirm in the wallet dialog.
-3. Switch the Overview toggle to **Contributor** (swaps to the demo contributor wallet) → **Accept** → **Submit work**.
-4. Switch back to **Issuer** → **Review** → **Approve and release**.
-5. Try **Refunds & safety**, and **Demo settings → Simulate failed transactions** for error states.
+1. Install Freighter (or xBull, Albedo, LOBSTR, Rabet, Hana) and switch it to **Testnet**. Create two accounts: an
+   issuer and a contributor.
+2. Fund both with XLM at [Friendbot](https://lab.stellar.org/account/fund), add the USDC trustline, and get test
+   USDC for the issuer from [Circle's faucet](https://faucet.circle.com).
+3. Open http://localhost:3000, connect as the issuer and sign the sign-in request (it moves no funds).
+4. **Create a bounty** (saved as a draft) → **Publish and fund** (your wallet signs publish, fund and, if you named
+   one, assign).
+5. Switch your wallet to the contributor account, connect again → **Accept** → **Submit work**.
+6. Back as the issuer → **Review** → **Approve and release** (two signatures). Try **Refunds & safety** for the
+   request → confirm cancellation flow.
+
+For a walkthrough without wallets, run `NEXT_PUBLIC_DEMO_MODE=1 pnpm dev`: the Issuer / Contributor toggle swaps two
+seeded demo wallets, and **Settings → Simulate failed transactions** shows the error states.
 
 ## Deployment
 

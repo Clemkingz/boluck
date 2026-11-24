@@ -1,14 +1,13 @@
 "use client";
 
 /**
- * Client-side app store. Stands in for three things that don't exist yet:
- *  - the wallet connection (Freighter / xBull / Albedo via a wallet kit)
- *  - the escrow smart contract (rules live in lib/escrow.ts)
- *  - the metadata/indexer backend (bounties, submissions, transactions)
+ * Client-side app store. Two data sources behind one shape (see lib/api/config.ts):
+ *  - live (default): the Boluck API + real Stellar wallets. Implemented in ./live.ts.
+ *  - demo (`NEXT_PUBLIC_DEMO_MODE=1`): the whole lifecycle simulated in the browser on seed data (below).
  *
- * State is persisted to localStorage so a demo survives reloads. Hydration is
- * skipped on the server and triggered from <StoreHydrator /> so the first
- * client render matches the server-rendered seed data.
+ * Every on-chain write goes through a `run()`: wallet confirmation → pending → success toast, or failure with
+ * the state unchanged. Live mode only persists the wallet session; demo mode persists the whole demo.
+ * Hydration is skipped on the server and triggered from <StoreHydrator />.
  */
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
@@ -31,12 +30,17 @@ import type {
 import { mockTxHash } from "@repo/stellar/address";
 import { sleep } from "@/lib/utils";
 import { toast } from "@repo/ui/toast";
+import { LIVE } from "@/lib/api/config";
+import type { DashboardDto, EscrowConfigDto, NetworkInfoDto } from "@/lib/api/types";
+import { createLiveActions, onLiveRehydrate } from "./live";
 
 export interface CreateBountyInput {
 	title: string;
 	project: string;
 	description: string;
 	rewardAmount: number;
+	/** The reward exactly as typed ("300.00"); live mode sends this, never the float. */
+	rewardText?: string;
 	deadline: string;
 	requirements: string[];
 	acceptanceCriteria: string[];
@@ -54,6 +58,25 @@ interface Wallet {
 	provider: WalletId;
 }
 
+export interface WalletSession {
+	token: string;
+	expiresAt: string;
+}
+
+export interface AppNotification {
+	id: string;
+	bountyId: string;
+	title: string;
+	read: boolean;
+	at: string;
+}
+
+/** Live mode: what Horizon says about the connected account. */
+export interface AccountStatus {
+	exists: boolean;
+	usdcTrusted: boolean;
+}
+
 type TxDraft = { type: TxType; amount?: number; to?: string };
 
 interface RunOptions {
@@ -68,7 +91,7 @@ interface RunOptions {
 	success: { title: string; description?: string; href?: string };
 }
 
-interface AppState {
+export interface AppState {
 	hydrated: boolean;
 	wallet: Wallet | null;
 	role: Role;
@@ -78,7 +101,45 @@ interface AppState {
 	simulateFailures: boolean;
 	tx: TxState;
 
-	connect: (provider: WalletId, role: Role) => void;
+	/* live mode */
+	session: WalletSession | null;
+	/** First load after connecting/reloading has finished. Always true in demo mode. */
+	loaded: boolean;
+	/** Bounty ids being loaded from the API. */
+	fetching: Record<string, boolean>;
+	notifications: AppNotification[];
+	unread: number;
+	/** Live: more pages to load (history, notifications). */
+	more: { transactions: boolean; notifications: boolean };
+	loadMoreTransactions: () => Promise<void>;
+	loadMoreNotifications: () => Promise<void>;
+	account: AccountStatus | null;
+	network: NetworkInfoDto | null;
+	escrowConfig: EscrowConfigDto | null;
+	/** Live: `GET /dashboard` — the PRD dashboard totals and recent activity for this wallet. */
+	dashboard: DashboardDto | null;
+	/** Live: after a 429, on-chain actions wait until this time (ms). */
+	cooldownUntil: number;
+	/** Live: the API's per-field validation messages for the form that was just sent (API field → message). */
+	fieldErrors: Record<string, string>;
+	clearFieldErrors: () => void;
+	refresh: () => Promise<void>;
+	loadBounty: (id: string) => Promise<void>;
+	markNotificationsRead: () => Promise<void>;
+	/** Assigned bounties: either party asks, the other confirms (refund to the issuer). */
+	requestCancel: (id: string) => Promise<boolean>;
+	withdrawCancel: (id: string) => Promise<boolean>;
+	confirmCancel: (id: string) => Promise<boolean>;
+	/** Issuer recovers escrow after the bounty's reclaim date. */
+	reclaim: (id: string) => Promise<boolean>;
+	/** Contributor fallback for the server's automatic release (`auto_release`, shown as "Claim payment"). */
+	claimPayment: (id: string) => Promise<boolean>;
+	/** Off-chain drafts only (not yet published). No signature. */
+	updateDraft: (id: string, input: CreateBountyInput) => Promise<boolean>;
+	deleteDraft: (id: string) => Promise<boolean>;
+
+	/** Resolves true when connected. Live: wallet prompt → network check → signed sign-in challenge. */
+	connect: (provider: WalletId, role: Role) => Promise<boolean>;
 	disconnect: () => void;
 	setRole: (role: Role) => void;
 	setSimulateFailures: (value: boolean) => void;
@@ -87,10 +148,10 @@ interface AppState {
 	closeTx: () => void;
 	resetDemo: () => void;
 
+	/** Live: saves an off-chain draft (no signature); funding publishes it. Demo: one simulated transaction. */
 	createBounty: (input: CreateBountyInput) => Promise<string | null>;
 	fundBounty: (id: string) => Promise<boolean>;
 	assignContributor: (id: string, contributor: string) => Promise<boolean>;
-	claimBounty: (id: string) => Promise<boolean>;
 	acceptAssignment: (id: string) => Promise<boolean>;
 	submitWork: (id: string, input: SubmitWorkInput) => Promise<boolean>;
 	requestRevision: (id: string, comment: string) => Promise<boolean>;
@@ -113,8 +174,13 @@ const credit = (balances: Record<string, Balance>, address: string, delta: numbe
 
 const ICONS: BountyIcon[] = ["layout", "code", "sparkle", "doc", "shield", "palette"];
 
-/** Resolves the pending wallet confirmation (true = signed, false = rejected). */
+/** Resolves the pending wallet confirmation (true = signed, false = rejected). Live mode uses it to cancel a wait. */
 let pendingSignature: ((signed: boolean) => void) | null = null;
+export const signatureGate = {
+	set: (fn: ((signed: boolean) => void) | null) => {
+		pendingSignature = fn;
+	},
+};
 let ledgerCursor = 1_292_545;
 
 export const useAppStore = create<AppState>()(
@@ -131,7 +197,7 @@ export const useAppStore = create<AppState>()(
 				}
 				const rejection = opts.guard();
 				if (rejection) {
-					toast.error("The contract would reject this", { description: rejection });
+					toast.error("The escrow would reject this", { description: rejection });
 					return null;
 				}
 
@@ -161,7 +227,7 @@ export const useAppStore = create<AppState>()(
 				}));
 
 				if (failed) {
-					// Failed token transfers must not change contract state (PRD rule 9).
+					// Failed token transfers must not change escrow state (PRD rule 9).
 					const error = "The token transfer failed. No funds moved and the bounty status is unchanged.";
 					set((s) => ({ transactions: [records.at(-1)!, ...s.transactions], tx: { ...s.tx, stage: "error", hash, error } }));
 					toast.error(`${opts.title} failed`, { description: error, meta: txReference(records.at(-1)!) });
@@ -190,7 +256,7 @@ export const useAppStore = create<AppState>()(
 				{ label: "Reward token", value: "Testnet USDC · Stellar" },
 			];
 
-			return {
+			const demo: AppState = {
 				hydrated: false,
 				wallet: null,
 				role: "issuer",
@@ -198,12 +264,60 @@ export const useAppStore = create<AppState>()(
 				simulateFailures: false,
 				tx: IDLE_TX,
 
-				connect: (provider, role) => {
+				session: null,
+				loaded: true,
+				fetching: {},
+				notifications: [],
+				unread: 0,
+				more: { transactions: false, notifications: false },
+				loadMoreTransactions: async () => {},
+				loadMoreNotifications: async () => {},
+				account: null,
+				network: null,
+				escrowConfig: null,
+				dashboard: null,
+				cooldownUntil: 0,
+				fieldErrors: {},
+				clearFieldErrors: () => {},
+				refresh: async () => {},
+				loadBounty: async () => {},
+				markNotificationsRead: async () => {},
+				// The demo models the agreement with a checkbox (cancelBounty); these exist in live mode only.
+				requestCancel: async () => false,
+				withdrawCancel: async () => false,
+				confirmCancel: async () => false,
+				reclaim: async () => false,
+				claimPayment: async () => false,
+				updateDraft: async (id, input) => {
+					const b = find(id);
+					if (!b || b.status !== "draft" || b.issuer !== get().wallet?.address) return false;
+					const fields = { ...input, rewardText: undefined };
+					set((s) => ({
+						bounties: mapBounty(s.bounties, id, (x) => ({
+							...x,
+							...fields,
+							contributor: input.contributor || undefined,
+							updatedAt: new Date().toISOString(),
+						})),
+					}));
+					toast.success("Draft updated");
+					return true;
+				},
+				deleteDraft: async (id) => {
+					const b = find(id);
+					if (!b || b.status !== "draft" || b.issuer !== get().wallet?.address) return false;
+					set((s) => ({ bounties: s.bounties.filter((x) => x.id !== id) }));
+					toast.success("Draft deleted", { description: `${id} is gone. Nothing was on chain.` });
+					return true;
+				},
+
+				connect: async (provider, role) => {
 					const account = DEMO_ACCOUNTS[role];
 					set({ wallet: { provider, address: account.address }, role });
 					toast.success(`Connected with ${walletName(provider)}`, {
 						description: `${account.name} · ${shortAddress(account.address)} on Stellar Testnet`,
 					});
+					return true;
 				},
 				disconnect: () => {
 					set({ wallet: null });
@@ -243,7 +357,7 @@ export const useAppStore = create<AppState>()(
 					const hash = await run({
 						bountyId: id,
 						title: "Create bounty",
-						summary: `Register ${id} with the escrow contract`,
+						summary: `Register ${id} on Stellar`,
 						fn: "create_bounty",
 						rows: [
 							{ label: "Bounty", value: `${id} · ${input.project}` },
@@ -327,29 +441,6 @@ export const useAppStore = create<AppState>()(
 							bounties: mapBounty(s.bounties, id, (x) => ({ ...x, contributor, status: "assigned", updatedAt: now })),
 						}),
 						success: { title: "Contributor assigned", description: "They can now accept the assignment." },
-					});
-					return !!hash;
-				},
-
-				claimBounty: async (id) => {
-					const b = find(id);
-					if (!b) return false;
-					const caller = get().wallet?.address;
-					const hash = await run({
-						bountyId: id,
-						title: "Accept bounty",
-						summary: `Take on ${b.id} · ${formatAmount(b.rewardAmount)} reserved`,
-						fn: "claim_bounty",
-						rows: walletRows(b, [
-							{ label: "Reward", value: formatAmount(b.rewardAmount) },
-							{ label: "Contributor", value: shortAddress(caller) },
-						]),
-						guard: () => escrow.canClaim(find(id)!, caller),
-						txs: [{ type: "assign", to: caller }, { type: "accept" }],
-						apply: (s, now) => ({
-							bounties: mapBounty(s.bounties, id, (x) => ({ ...x, contributor: caller, status: "in_progress", updatedAt: now })),
-						}),
-						success: { title: "Bounty accepted", description: "The reward is secured. Submit your work when it's ready." },
 					});
 					return !!hash;
 				},
@@ -525,24 +616,50 @@ export const useAppStore = create<AppState>()(
 					return !!hash;
 				},
 			};
+
+			if (!LIVE) return demo;
+			// Live mode starts empty and loads from the API once a wallet session exists.
+			return {
+				...demo,
+				bounties: [],
+				transactions: [],
+				balances: {},
+				loaded: false,
+				...createLiveActions(set, get),
+			};
 		},
-		{
-			name: "boluck-demo",
-			version: 2,
-			storage: createJSONStorage(() => localStorage),
-			skipHydration: true,
-			// Older demo data (v1) used a different shape — start fresh.
-			migrate: () => ({ wallet: null, role: "issuer", ...seed(), simulateFailures: false }) as unknown as AppState,
-			partialize: (s) => ({
-				wallet: s.wallet,
-				role: s.role,
-				bounties: s.bounties,
-				transactions: s.transactions,
-				balances: s.balances,
-				simulateFailures: s.simulateFailures,
-			}),
-			onRehydrateStorage: () => () => useAppStore.setState({ hydrated: true }),
-		},
+		LIVE
+			? {
+					name: "boluck-live",
+					version: 1,
+					// The guide asks for memory or sessionStorage for the wallet token, never localStorage.
+					storage: createJSONStorage(() => sessionStorage),
+					skipHydration: true,
+					// Only the session: bounties and history always come fresh from the API.
+					partialize: (s) => ({ wallet: s.wallet, role: s.role, session: s.session }) as unknown as AppState,
+					onRehydrateStorage: () => () => {
+						useAppStore.setState({ hydrated: true });
+						void onLiveRehydrate(useAppStore.setState, useAppStore.getState);
+					},
+				}
+			: {
+					name: "boluck-demo",
+					version: 2,
+					storage: createJSONStorage(() => localStorage),
+					skipHydration: true,
+					// Older demo data (v1) used a different shape — start fresh.
+					migrate: () => ({ wallet: null, role: "issuer", ...seed(), simulateFailures: false }) as unknown as AppState,
+					partialize: (s) =>
+						({
+							wallet: s.wallet,
+							role: s.role,
+							bounties: s.bounties,
+							transactions: s.transactions,
+							balances: s.balances,
+							simulateFailures: s.simulateFailures,
+						}) as unknown as AppState,
+					onRehydrateStorage: () => () => useAppStore.setState({ hydrated: true }),
+				},
 	),
 );
 

@@ -13,6 +13,7 @@ import { Notice } from "@repo/ui/misc";
 import { Panel } from "@repo/ui/panel";
 import { canReview } from "@repo/stellar/escrow";
 import { formatUsd } from "@repo/stellar/format";
+import { LIVE } from "@/lib/api/config";
 import { useAppStore } from "@/features/escrow/store";
 
 export function ReviewSubmission({ params }: { params: BountyParams }) {
@@ -24,10 +25,19 @@ export function ReviewSubmission({ params }: { params: BountyParams }) {
 	const [revisionOpen, setRevisionOpen] = useState(false);
 	const [comment, setComment] = useState("");
 	const [commentError, setCommentError] = useState<string>();
+	const maxRevisions = useAppStore((s) => s.escrowConfig?.maxRevisions);
 	if (!bounty) return <BountyNotFound id={id} />;
 
 	const submission = bounty.submissions.at(-1);
-	const guard = canReview(bounty, address);
+	// Live: the server decides (guide §1.6); the local rule is only a pre-check.
+	const acts = bounty.chain?.availableActions;
+	const guard =
+		canReview(bounty, address) ??
+		(acts && !acts.includes("approve") && !acts.includes("request_revision")
+			? "This submission can't be reviewed right now. The review window may have closed."
+			: null);
+	const canRevise = !acts || acts.includes("request_revision");
+	const revisions = bounty.chain?.revisionCount ?? 0;
 	const detailHref = `/bounties/${bounty.id}`;
 
 	return (
@@ -53,7 +63,7 @@ export function ReviewSubmission({ params }: { params: BountyParams }) {
 								<a
 									href={submission.deliverableUrl}
 									target="_blank"
-									rel="noreferrer"
+									rel="noopener noreferrer"
 									className="flex items-center justify-between gap-3 break-all hover:text-primary"
 								>
 									{submission.deliverableUrl} <ExternalLink className="size-4 shrink-0 text-muted" />
@@ -66,11 +76,13 @@ export function ReviewSubmission({ params }: { params: BountyParams }) {
 								label="Supporting evidence reference"
 								hint="Optional link to screenshots, test results, or related evidence"
 							>
-								{submission.evidence ? (
+								{submission.evidence && !/^https?:\/\//.test(submission.evidence) ? (
+									<span className="break-all">{submission.evidence}</span>
+								) : submission.evidence ? (
 									<a
 										href={submission.evidence}
 										target="_blank"
-										rel="noreferrer"
+										rel="noopener noreferrer"
 										className="flex items-center justify-between gap-3 break-all hover:text-primary"
 									>
 										{submission.evidence} <ExternalLink className="size-4 shrink-0 text-muted" />
@@ -108,12 +120,27 @@ export function ReviewSubmission({ params }: { params: BountyParams }) {
 									>
 										Approve and release {formatUsd(bounty.rewardAmount)}
 									</Button>
-									<Button variant="secondary" size="lg" icon={<Timer />} disabled={busy} onClick={() => setRevisionOpen(true)}>
-										Request a revision
-									</Button>
+									{canRevise ? (
+										<Button variant="secondary" size="lg" icon={<Timer />} disabled={busy} onClick={() => setRevisionOpen(true)}>
+											Request a revision
+										</Button>
+									) : (
+										<p className="self-center text-center text-[10px] text-muted">
+											Revision limit reached{maxRevisions ? ` (${maxRevisions})` : ""}. Approve to finish the bounty.
+										</p>
+									)}
 								</div>
 							)}
-							<p className="text-[10px] text-muted">Approval simulates payout only. No real USDC is transferred.</p>
+							{!guard && bounty.chain && maxRevisions && canRevise ? (
+								<p className="text-[10px] text-muted">
+									Revisions used: {revisions} of {maxRevisions}.
+								</p>
+							) : null}
+							<p className="text-[10px] text-muted">
+								{LIVE
+									? "Your wallet signs twice: approve the work, then release the reward from escrow."
+									: "Approval simulates payout only. No real USDC is transferred."}
+							</p>
 						</div>
 					)}
 				</Panel>

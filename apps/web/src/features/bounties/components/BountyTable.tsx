@@ -56,9 +56,7 @@ export function BountyTable({
 									<p className="truncate text-xs font-semibold text-ink transition-colors group-hover:text-primary sm:text-[13px]">
 										{b.title}
 									</p>
-									<p className="mt-1 truncate text-[10px] text-muted">
-										{b.project} · {b.id}
-									</p>
+									<p className="mt-1 truncate text-[10px] text-muted">{b.project ? `${b.project} · ${b.id}` : b.id}</p>
 								</div>
 							</div>
 							<span className="text-right text-xs font-semibold text-ink tabular-nums @xl:text-left">

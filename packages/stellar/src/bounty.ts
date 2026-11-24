@@ -1,9 +1,9 @@
 /**
  * Domain types for Boluck.
  *
- * These mirror what the bounty escrow contract (source of truth for
- * funding, escrow balance, authorization and payout status) plus the metadata
- * backend will expose. Until those exist, everything is served from mock data.
+ * The app renders these whether the data comes from the Boluck API (live mode,
+ * mapped in apps/web/src/lib/api/mappers.ts) or from the demo seed data. The
+ * escrow on Stellar is the source of truth for funding, authorization and payout.
  */
 
 export type BountyStatus =
@@ -45,6 +45,45 @@ export interface Cancellation {
 	contributorAgreed: boolean;
 }
 
+/** On-chain actions the API can prepare (`POST /bounties/{reference}/actions`). */
+export type ActionKind =
+	| "create"
+	| "fund"
+	| "assign"
+	| "accept"
+	| "submit"
+	| "request_revision"
+	| "approve"
+	| "release"
+	| "cancel"
+	| "request_cancel"
+	| "withdraw_cancel"
+	| "confirm_cancel"
+	| "reclaim"
+	| "auto_release";
+
+/** Server-side escrow state that only exists in live mode. */
+export interface ChainState {
+	/** Exact reward as the API stores it (a decimal string). `Bounty.rewardAmount` is for display only. */
+	reward: string;
+	/** Why the server's automatic release failed, if it did. */
+	autoReleaseError?: string;
+	/** Actions the connected wallet may take now. The server decides; the UI only shows them. */
+	availableActions: ActionKind[];
+	onChain: boolean;
+	fundingVerified: boolean;
+	fundTxHash?: string;
+	/** Who asked to cancel an assigned bounty; the other party confirms. */
+	cancelRequestedBy?: string;
+	/** When the server releases the reward on its own (review window, or 24 h after an unreleased approval). */
+	reviewDueAt?: string;
+	revisionDueAt?: string;
+	/** After this the issuer can reclaim an unfinished bounty's escrow. */
+	reclaimAfterAt?: string;
+	revisionCount: number;
+	paidAutomatically: boolean;
+}
+
 export interface Bounty {
 	id: string;
 	title: string;
@@ -53,7 +92,7 @@ export interface Bounty {
 	description: string;
 	token: "USDC";
 	rewardAmount: number;
-	/** Amount currently locked in the escrow contract for this bounty. */
+	/** Amount currently locked in escrow on Stellar for this bounty. */
 	escrowBalance: number;
 	deadline: string;
 	requirements: string[];
@@ -66,13 +105,29 @@ export interface Bounty {
 	updatedAt: string;
 	submissions: Submission[];
 	cancellation?: Cancellation;
+	/** Live mode only. */
+	chain?: ChainState;
 }
 
 export type TxType =
-	"create" | "fund" | "assign" | "accept" | "submit" | "approve" | "request_revision" | "payout" | "cancel" | "refund";
+	| "create"
+	| "fund"
+	| "assign"
+	| "accept"
+	| "submit"
+	| "approve"
+	| "request_revision"
+	| "payout"
+	| "cancel"
+	| "refund"
+	| "cancel_request"
+	| "cancel_withdraw";
 
 export interface Transaction {
+	/** Event id from the API; demo records use the hash. */
+	id?: string;
 	hash: string;
+	explorerUrl?: string;
 	bountyId: string;
 	type: TxType;
 	amount?: number;
@@ -107,8 +162,14 @@ export interface TxState {
 	title: string;
 	/** Short line under the title, e.g. "Lock 300.00 USDC in escrow". */
 	summary?: string;
-	/** Contract function name shown in the wallet confirmation. */
+	/** Escrow action shown in the wallet confirmation (e.g. `fund`). */
 	fn?: string;
+	/** Live mode: what the dialog is waiting on before the network step. */
+	waitingFor?: "prepare" | "wallet";
+	/** Live mode: explorer link once confirmed. */
+	explorerUrl?: string;
+	/** "Step 1 of 2" when one button needs two signatures. */
+	step?: string;
 	rows?: TxDetailRow[];
 	hash?: string;
 	error?: string;

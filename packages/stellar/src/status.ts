@@ -68,4 +68,6 @@ export const TX_META: Record<TxType, { label: string; kind: "escrow" | "payout" 
 	payout: { label: "Payment released", kind: "payout" },
 	cancel: { label: "Bounty cancelled", kind: "refund" },
 	refund: { label: "Escrow refunded", kind: "refund" },
+	cancel_request: { label: "Cancellation requested", kind: "refund" },
+	cancel_withdraw: { label: "Cancellation withdrawn", kind: "refund" },
 };

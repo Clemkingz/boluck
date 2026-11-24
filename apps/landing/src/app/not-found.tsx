@@ -23,8 +23,8 @@ export default function NotFound() {
 							<ButtonLink href="/" size="lg" icon={<ArrowLeft />}>
 								Back home
 							</ButtonLink>
-							<a href={APP_LINKS.explore} className={buttonClasses({ size: "lg", variant: "secondary" })}>
-								<Compass className="size-[18px]" /> Explore bounties
+							<a href={APP_LINKS.bounties} className={buttonClasses({ size: "lg", variant: "secondary" })}>
+								<Compass className="size-[18px]" /> Your bounties
 							</a>
 						</>
 					}

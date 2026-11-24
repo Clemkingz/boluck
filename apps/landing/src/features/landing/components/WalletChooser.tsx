@@ -1,18 +1,21 @@
 "use client";
 
-import { AlertTriangle, BriefcaseBusiness, CircleCheck, ExternalLink, PenTool, Wallet } from "lucide-react";
+import { AlertTriangle, ArrowRight, BriefcaseBusiness, CircleCheck, ExternalLink, PenTool, Wallet } from "lucide-react";
 import { useState } from "react";
 import type { Role } from "@repo/stellar/bounty";
 import { IconTile } from "@repo/ui/panel";
 import { cn } from "@repo/ui/lib/utils";
-import { APP_LINKS } from "@/lib/site";
+import { APP_LINKS, DEMO_MODE } from "@/lib/site";
 
 const ROLES: { id: Role; label: string; sub: string; icon: typeof BriefcaseBusiness }[] = [
 	{ id: "issuer", label: "Issuer", sub: "Post & fund bounties", icon: BriefcaseBusiness },
 	{ id: "contributor", label: "Contributor", sub: "Do the work & get paid", icon: PenTool },
 ];
 
-/** In this demo Freighter is "not installed" (setup walkthrough); xBull and Albedo are "ready". */
+/**
+ * Live: every wallet hands off to the app, which detects the installed wallets and signs in for real.
+ * Demo (`NEXT_PUBLIC_DEMO_MODE=1`): Freighter is "not installed" (setup walkthrough); xBull and Albedo are "ready".
+ */
 const WALLETS = [
 	{ id: "freighter", name: "Freighter", kind: "Extension", ready: false, recommended: true, url: "https://www.freighter.app/" },
 	{ id: "xbull", name: "xBull", kind: "Extension & mobile", ready: true, url: "https://xbull.app/" },
@@ -39,8 +42,8 @@ const SETUP = [
 ];
 
 /**
- * "Connect your wallet" panel from the landing design. Choosing a ready wallet hands off to the app's /connect
- * page (a different app, so plain links) with the role and wallet; the app finishes the connection.
+ * "Connect your wallet" panel from the landing design. Choosing a wallet hands off to the app's /connect page
+ * (a different app, so plain links) with the role and wallet; the app finishes the connection.
  */
 export function WalletChooser({ className }: { className?: string }) {
 	const [role, setRole] = useState<Role>("issuer");
@@ -106,7 +109,11 @@ export function WalletChooser({ className }: { className?: string }) {
 								</span>
 								<span className="block text-[10px] text-muted">{w.kind}</span>
 							</span>
-							{w.ready ? (
+							{!DEMO_MODE ? (
+								<span className="flex items-center gap-1 text-[10px] font-semibold text-primary transition-transform group-hover:translate-x-0.5">
+									Connect <ArrowRight className="size-3" />
+								</span>
+							) : w.ready ? (
 								<span className="flex items-center gap-1.5 text-[10px] font-semibold text-primary">
 									<span className="size-1.5 rounded-full bg-primary" /> Ready
 								</span>
@@ -119,7 +126,7 @@ export function WalletChooser({ className }: { className?: string }) {
 					);
 					return (
 						<li key={w.id}>
-							{w.ready ? (
+							{!DEMO_MODE || w.ready ? (
 								<a href={APP_LINKS.connect({ role, wallet: w.id })} className={classes}>
 									{body}
 								</a>
@@ -128,7 +135,7 @@ export function WalletChooser({ className }: { className?: string }) {
 									{body}
 								</button>
 							) : (
-								<a href={w.url} target="_blank" rel="noreferrer" className={classes}>
+								<a href={w.url} target="_blank" rel="noopener noreferrer" className={classes}>
 									{body}
 								</a>
 							)}
@@ -177,7 +184,7 @@ export function WalletChooser({ className }: { className?: string }) {
 							<a
 								href={item.href}
 								target="_blank"
-								rel="noreferrer"
+								rel="noopener noreferrer"
 								className="inline-flex shrink-0 items-center gap-1 text-xs text-primary hover:underline"
 							>
 								{item.cta} <ExternalLink className="size-3" />

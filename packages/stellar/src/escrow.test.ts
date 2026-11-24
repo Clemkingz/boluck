@@ -1,13 +1,12 @@
 /**
- * Contract-rule tests mirroring the PRD's "Funding, Approval, Payout & Refund
- * Testing" scenarios. The real escrow contract must pass the same cases.
+ * Escrow-rule tests mirroring the PRD's "Funding, Approval, Payout & Refund
+ * Testing" scenarios. The Boluck API enforces the same rules on Stellar.
  */
 import { describe, expect, it } from "vitest";
 import {
 	canAccept,
 	canAssign,
 	canCancel,
-	canClaim,
 	canFund,
 	canRelease,
 	canReview,
@@ -71,11 +70,6 @@ describe("assignment", () => {
 	it("blocks unauthorized assignment and self-assignment", () => {
 		expect(canAssign(funded(), STRANGER, ADA)).toMatch(/issuer/);
 		expect(canAssign(funded(), SAM, SAM)).not.toBeNull();
-	});
-	it("lets another wallet claim an open funded bounty, but not the issuer", () => {
-		expect(canClaim(funded(), ADA)).toBeNull();
-		expect(canClaim(funded(), SAM)).not.toBeNull();
-		expect(canClaim(funded({ contributor: ADA }), STRANGER)).not.toBeNull();
 	});
 	it("only the assigned contributor accepts", () => {
 		const b = funded({ status: "assigned", contributor: ADA });

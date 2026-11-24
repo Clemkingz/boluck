@@ -1,17 +1,17 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { PageSkeleton } from "@/components/layouts/AppShell";
-import { BountiesView } from "@/features/bounties/components/ExploreBounties";
+import { MyBounties } from "@/features/bounties/components/MyBounties";
 
 export const metadata: Metadata = {
-	title: "Explore bounties",
-	description: "Funded bounties with visible rewards, clear briefs and escrow set aside before work begins.",
+	title: "Your bounties",
+	description: "The bounties you issued or were assigned, with rewards and escrow status.",
 };
 
 export default function BountiesPage() {
 	return (
 		<Suspense fallback={<PageSkeleton />}>
-			<BountiesView />
+			<MyBounties />
 		</Suspense>
 	);
 }

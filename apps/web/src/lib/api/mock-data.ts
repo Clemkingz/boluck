@@ -1,5 +1,5 @@
 /**
- * Seed data used in place of the backend + contract indexer (swap for real API calls in lib/api).
+ * Seed data used in demo mode (`NEXT_PUBLIC_DEMO_MODE=1`) in place of the Boluck API.
  * Mirrors the content of the Figma designs. Everything here is deterministic so
  * server and client renders match.
  */
@@ -177,7 +177,7 @@ export const SEED_BOUNTIES: Bounty[] = [
 		escrowBalance: 900,
 		deadline: "2027-01-10T23:59:00.000Z",
 		requirements: ["Written report", "Reproduction steps for each finding"],
-		acceptanceCriteria: ["Covers every contract event", "Matches on-chain records"],
+		acceptanceCriteria: ["Covers every escrow event", "Matches on-chain records"],
 		issuer: ORBIT,
 		issuerName: "Orbit Protocol",
 		contributor: ADA,

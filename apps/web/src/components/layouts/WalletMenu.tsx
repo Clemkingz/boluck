@@ -7,6 +7,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { explorerAccountUrl } from "@repo/stellar/network";
 import { walletName } from "@/features/wallet/wallets";
 import { formatAmount, shortAddress } from "@repo/stellar/format";
+import { LIVE } from "@/lib/api/config";
 import { ACCOUNT_NAMES } from "@/lib/api/mock-data";
 import { cn } from "@/lib/utils";
 import { useAppStore, useWalletBalance } from "@/features/escrow/store";
@@ -42,7 +43,7 @@ export function WalletButton() {
 				>
 					<div className="px-3 py-2.5">
 						<p className="text-[10px] text-muted">Connected with {walletName(wallet.provider)} · Testnet</p>
-						<p className="mt-1 text-sm font-semibold text-ink">{ACCOUNT_NAMES[wallet.address] ?? "Testnet account"}</p>
+						<p className="mt-1 text-sm font-semibold text-ink">{(!LIVE && ACCOUNT_NAMES[wallet.address]) || "Testnet account"}</p>
 						<p className="mt-0.5 font-mono text-[10px] break-all text-muted">{wallet.address}</p>
 					</div>
 					<div className="mx-1 grid grid-cols-2 gap-2 rounded-[var(--radius-md)] bg-canvas/60 p-3 text-sm">
@@ -65,11 +66,17 @@ export function WalletButton() {
 						>
 							Copy address
 						</MenuItem>
-						<a href={explorerAccountUrl(wallet.address)} target="_blank" rel="noreferrer" className={itemClass} role="menuitem">
+						<a
+							href={explorerAccountUrl(wallet.address)}
+							target="_blank"
+							rel="noopener noreferrer"
+							className={itemClass}
+							role="menuitem"
+						>
 							<ExternalLink /> View on Stellar Expert
 						</a>
 						<Link href="/settings" onClick={() => setOpen(false)} className={itemClass} role="menuitem">
-							<Settings /> Demo settings
+							<Settings /> {LIVE ? "Settings" : "Demo settings"}
 						</Link>
 						<MenuItem
 							icon={<LogOut />}

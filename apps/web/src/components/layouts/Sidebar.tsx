@@ -23,6 +23,8 @@ import { useClickOutside } from "@/components/layouts/WalletMenu";
 import { ACTIVE_STATUSES } from "@repo/stellar/status";
 import { formatUsd } from "@repo/stellar/format";
 import { DEMO_ACCOUNTS } from "@/lib/api/mock-data";
+import { LIVE } from "@/lib/api/config";
+import { shortAddress } from "@repo/stellar/format";
 import { cn } from "@/lib/utils";
 import { useAppStore } from "@/features/escrow/store";
 import { useRoleBounties } from "@/features/escrow/hooks";
@@ -32,7 +34,7 @@ export const NAV = [
 		section: "Workspace",
 		items: [
 			{ href: "/overview", label: "Overview", icon: LayoutGrid },
-			{ href: "/bounties", label: "Explore Bounties", icon: FolderOpen },
+			{ href: "/bounties", label: "Your Bounties", icon: FolderOpen },
 			{ href: "/bounties/new", label: "Create a bounty", icon: FilePlus2, plus: true },
 		],
 	},
@@ -137,7 +139,7 @@ export function WorkspaceSwitcher() {
 						onClick={() => setOpen(false)}
 						className="flex items-center gap-2 rounded-[var(--radius-sm)] px-3 py-2 text-muted hover:bg-elevated hover:text-ink"
 					>
-						<Settings className="size-4" /> Demo settings
+						<Settings className="size-4" /> {LIVE ? "Settings" : "Demo settings"}
 					</Link>
 				</div>
 			)}
@@ -195,8 +197,15 @@ export function AccountFooter() {
 	const role = useAppStore((s) => s.role);
 	const wallet = useAppStore((s) => s.wallet);
 	const disconnect = useAppStore((s) => s.disconnect);
-	const account = DEMO_ACCOUNTS[role];
 	if (!wallet) return null;
+	// Live: the API stores no names, so the wallet address is the identity.
+	const account = LIVE
+		? {
+				initials: wallet.address.slice(1, 3),
+				name: shortAddress(wallet.address),
+				sub: `${role === "issuer" ? "Issuer" : "Contributor"} view · Testnet`,
+			}
+		: { ...DEMO_ACCOUNTS[role], sub: "Testnet wallet" };
 	return (
 		<div className="flex items-center gap-3 border-t border-line px-6 py-6">
 			<span className="grid size-10 shrink-0 place-items-center rounded-full bg-deep font-display text-base font-bold text-primary">
@@ -204,7 +213,7 @@ export function AccountFooter() {
 			</span>
 			<span className="min-w-0 flex-1">
 				<span className="block truncate text-sm font-medium text-ink">{account.name}</span>
-				<span className="block text-[10px] text-muted">Testnet wallet</span>
+				<span className="block text-[10px] text-muted">{account.sub}</span>
 			</span>
 			<button
 				onClick={() => {

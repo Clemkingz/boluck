@@ -1,16 +1,18 @@
 "use client";
 
-import { ShieldCheck, XCircle } from "lucide-react";
+import { ExternalLink, ShieldCheck, XCircle } from "lucide-react";
 import { Button } from "@repo/ui/button";
+import { Spinner } from "@repo/ui/spinner";
 import { Modal } from "@repo/ui/modal";
 import { walletName } from "@/features/wallet/wallets";
 import { cn } from "@/lib/utils";
 import { useAppStore } from "@/features/escrow/store";
 
 /**
- * The wallet's transaction confirmation (design: "Funding confirmation 1").
- * authorize → user confirms/rejects, pending → ledger confirmation animation,
- * success → animated check, error → failure details.
+ * The transaction confirmation (design: "Funding confirmation 1").
+ * Demo: authorize → user confirms/rejects here (standing in for the wallet).
+ * Live: authorize → the server prepares the transaction, then the real wallet asks for the signature.
+ * Then pending → ledger confirmation animation, success → animated check, error → failure details.
  */
 export function TxDialog() {
 	const tx = useAppStore((s) => s.tx);
@@ -36,7 +38,10 @@ export function TxDialog() {
 					<span className="grid size-5 place-items-center rounded-[4px] bg-deep text-[10px] font-semibold">{name[0]}</span>
 					{name}
 				</span>
-				<span className="rounded-full bg-primary/15 px-2.5 py-1 text-[10px] font-semibold text-primary">TestNet</span>
+				<span className="flex items-center gap-2">
+					{tx.step && <span className="text-[10px] font-medium text-muted">{tx.step}</span>}
+					<span className="rounded-full bg-primary/15 px-2.5 py-1 text-[10px] font-semibold text-primary">TestNet</span>
+				</span>
 			</div>
 
 			{tx.stage === "authorize" && (
@@ -68,18 +73,43 @@ export function TxDialog() {
 						The funds can only leave escrow when the issuer approves the work, or as a refund under the bounty&apos;s cancellation
 						rules.
 					</p>
-					<div className="mt-6 grid grid-cols-2 gap-4">
-						<Button variant="secondary" size="lg" onClick={rejectTx}>
-							Reject
-						</Button>
-						<Button size="lg" onClick={confirmTx} autoFocus>
-							Confirm
-						</Button>
-					</div>
+					{tx.waitingFor ? (
+						<div className="mt-6 space-y-3">
+							<p
+								className="flex items-center justify-center gap-2 rounded-[var(--radius-sm)] border border-line bg-canvas/50 py-3 text-sm text-ink"
+								aria-live="polite"
+							>
+								<Spinner className="size-4 text-primary" />
+								{tx.waitingFor === "prepare" ? "Preparing the transaction…" : `Approve the request in ${name}`}
+							</p>
+							<Button variant="ghost" fullWidth onClick={rejectTx}>
+								Cancel
+							</Button>
+						</div>
+					) : (
+						<div className="mt-6 grid grid-cols-2 gap-4">
+							<Button variant="secondary" size="lg" onClick={rejectTx}>
+								Reject
+							</Button>
+							<Button size="lg" onClick={confirmTx} autoFocus>
+								Confirm
+							</Button>
+						</div>
+					)}
 				</div>
 			)}
 
 			{busy && <Progress done={tx.stage === "success"} title={tx.title} />}
+			{tx.stage === "success" && tx.explorerUrl && (
+				<a
+					href={tx.explorerUrl}
+					target="_blank"
+					rel="noopener noreferrer"
+					className="mt-2 flex items-center justify-center gap-1 text-xs text-primary hover:underline"
+				>
+					View on stellar.expert <ExternalLink className="size-3" />
+				</a>
+			)}
 
 			{tx.stage === "error" && (
 				<div className="mt-8 animate-fade-up text-center">

@@ -13,6 +13,7 @@ import { walletName } from "@/features/wallet/wallets";
 import { canFund } from "@repo/stellar/escrow";
 import { formatUsd, shortAddress } from "@repo/stellar/format";
 import { useAppStore, useWalletBalance } from "@/features/escrow/store";
+import { LIVE } from "@/lib/api/config";
 
 export function FundBounty({ params }: { params: BountyParams }) {
 	const router = useRouter();
@@ -20,14 +21,31 @@ export function FundBounty({ params }: { params: BountyParams }) {
 	const wallet = useAppStore((s) => s.wallet);
 	const balance = useWalletBalance();
 	const fund = useAppStore((s) => s.fundBounty);
+	const account = useAppStore((s) => s.account);
+	// The escrow asset comes from GET /escrow/config (guide §2), not a hardcoded issuer.
+	const usdcIssuer = useAppStore((s) => s.escrowConfig?.asset.split(":")[1]);
 	const [authorized, setAuthorized] = useState(false);
 	const [busy, setBusy] = useState(false);
 	if (!bounty) return <BountyNotFound id={id} />;
 
 	const back = { href: `/bounties/${bounty.id}`, label: "Back to bounty" };
 	const usdc = balance?.usdc ?? 0;
-	const guard = canFund(bounty, address, balance);
+	const acts = bounty.chain?.availableActions;
+	const guard =
+		canFund(bounty, address, balance) ??
+		(acts && !acts.includes("fund") && !acts.includes("create") ? "This bounty can't be funded right now." : null);
 	const alreadyFunded = bounty.status !== "draft";
+	const needsPublish = !!bounty.chain?.availableActions.includes("create");
+	const signatures = (needsPublish ? 1 : 0) + 1 + (bounty.contributor ? 1 : 0);
+	// Horizon's view of the wallet, explained before the wallet is asked to sign.
+	const accountIssue =
+		!LIVE || !account
+			? null
+			: !account.exists
+				? "This wallet isn't active on Stellar Testnet yet. Fund it with test XLM from Friendbot first."
+				: !account.usdcTrusted
+					? `Add a USDC trustline in your wallet (asset USDC, issuer ${shortAddress(usdcIssuer, 4, 5)}) before funding.`
+					: null;
 
 	return (
 		<>
@@ -35,7 +53,11 @@ export function FundBounty({ params }: { params: BountyParams }) {
 				back={back}
 				eyebrow="Funding · Stellar Testnet"
 				title="Secure the reward first."
-				description="Review the amount and funding wallet before simulating escrow funding. This preview does not move testnet USDC."
+				description={
+					LIVE
+						? "Review the amount and funding wallet. Your wallet signs each step; the USDC moves into escrow on Stellar Testnet."
+						: "Review the amount and funding wallet before simulating escrow funding. This preview does not move testnet USDC."
+				}
 			/>
 
 			<div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_346px] [&>*]:min-w-0">
@@ -47,7 +69,8 @@ export function FundBounty({ params }: { params: BountyParams }) {
 						<div>
 							<h2 className="font-display text-base font-bold tracking-[-0.02em] text-ink">Bounty escrow summary</h2>
 							<p className="mt-1 text-[10px] text-muted">
-								{bounty.id} · {bounty.project.toLowerCase()} · {bounty.title}
+								{bounty.id}
+								{bounty.project && ` · ${bounty.project.toLowerCase()}`} · {bounty.title}
 							</p>
 						</div>
 					</div>
@@ -79,7 +102,20 @@ export function FundBounty({ params }: { params: BountyParams }) {
 						</Notice>
 					) : (
 						<>
-							{guard && !isIssuer ? null : guard ? (
+							{accountIssue && isIssuer && (
+								<Notice tone="attention" icon={<AlertTriangle />} className="mt-2">
+									{accountIssue}{" "}
+									<a
+										href="https://lab.stellar.org/account/fund"
+										target="_blank"
+										rel="noopener noreferrer"
+										className="text-primary underline"
+									>
+										Stellar Lab
+									</a>
+								</Notice>
+							)}
+							{guard && !isIssuer ? null : guard && !accountIssue ? (
 								<Notice tone="attention" icon={<AlertTriangle />} className="mt-2">
 									{guard}
 								</Notice>
@@ -99,7 +135,9 @@ export function FundBounty({ params }: { params: BountyParams }) {
 								<span>
 									<span className="block text-sm font-medium text-ink">I authorize this funding step</span>
 									<span className="mt-1 block text-[10px] leading-relaxed text-muted">
-										The prototype will ask your wallet to confirm, then update the bounty status. No real funds are transferred.
+										{LIVE
+											? `Your wallet will ask you to sign ${signatures} ${signatures === 1 ? "transaction" : "transactions"}: ${[needsPublish && "publish", "fund", bounty.contributor && "assign the contributor"].filter(Boolean).join(", ")}.`
+											: "The prototype will ask your wallet to confirm, then update the bounty status. No real funds are transferred."}
 									</span>
 								</span>
 							</label>
@@ -118,7 +156,7 @@ export function FundBounty({ params }: { params: BountyParams }) {
 									if (ok) router.push(`/bounties/${bounty.id}?confirmed=fund`);
 								}}
 							>
-								Confirm funding · {formatUsd(bounty.rewardAmount)} USDC
+								{needsPublish ? "Publish and fund" : "Confirm funding"} · {formatUsd(bounty.rewardAmount)} USDC
 							</Button>
 						</>
 					)}
@@ -147,10 +185,16 @@ export function FundBounty({ params }: { params: BountyParams }) {
 							</li>
 						))}
 					</ul>
-					<Notice tone="review" title="Preview-only confirmation" className="mt-6">
-						On the live app, the escrow contract would verify the transfer and return a Stellar transaction hash. No contract
-						transaction is connected here.
-					</Notice>
+					{LIVE ? (
+						<Notice tone="primary" title="Held on Stellar, not by Boluck" className="mt-6">
+							The reward is locked in a Stellar claimable balance that only the escrow rules can release: to the contributor on
+							approval, or back to you under the cancellation rules.
+						</Notice>
+					) : (
+						<Notice tone="review" title="Preview-only confirmation" className="mt-6">
+							In live mode the reward is locked in escrow on Stellar and you get a transaction hash. Nothing moves in this demo.
+						</Notice>
+					)}
 				</Panel>
 			</div>
 		</>

@@ -2,7 +2,10 @@
 
 import { AlertTriangle, ArrowRight, BriefcaseBusiness, CircleCheck, ExternalLink, PenTool, Wallet } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { Spinner } from "@repo/ui/spinner";
+import { LIVE } from "@/lib/api/config";
+import { isWalletAvailable } from "@/features/wallet/kit";
 import { Button, ButtonLink } from "@repo/ui/button";
 import { IconTile } from "@repo/ui/panel";
 import { WALLETS, walletName, type WalletOption } from "@/features/wallet/wallets";
@@ -20,9 +23,9 @@ const ROLES: { id: Role; label: string; sub: string; icon: typeof BriefcaseBusin
 ];
 
 /**
- * "Connect your wallet" panel from the landing design: pick a role, pick a
- * Stellar wallet. Freighter is simulated as not installed (shows the error and
- * the setup walkthrough); xBull and Albedo are simulated as ready.
+ * "Connect your wallet" panel from the landing design: pick a role, pick a Stellar wallet.
+ * Live: detects installed wallets, then connect → network check → sign the sign-in challenge.
+ * Demo: Freighter is simulated as not installed (error + setup walkthrough); xBull and Albedo as ready.
  */
 export function ConnectPanel({
 	redirectTo = "/overview",
@@ -44,11 +47,45 @@ export function ConnectPanel({
 	const [role, setRole] = useState<Role>(initialRole);
 	const [failed, setFailed] = useState<WalletId | null>(null);
 	const [installed, setInstalled] = useState<WalletId[]>([]);
-	const [flow, setFlow] = useState<{ wallet: WalletId; startAt: number } | null>(autoStart ?? null);
+	const [flow, setFlow] = useState<{ wallet: WalletId; startAt: number } | null>(LIVE ? null : (autoStart ?? null));
+	const [available, setAvailable] = useState<Partial<Record<WalletId, boolean>>>({});
+	const [connecting, setConnecting] = useState<WalletId | null>(null);
+	// Landing hand-off (`?wallet=`): highlight the wallet the person already picked.
+	const picked = autoStart?.wallet;
 
-	const stateOf = (w: WalletOption) => (installed.includes(w.id) ? "ready" : w.state);
+	useEffect(() => {
+		if (!LIVE) return;
+		let alive = true;
+		// Extensions inject themselves shortly after load; check now and once more a moment later.
+		const check = () =>
+			Promise.all(WALLETS.map(async (w) => [w.id, await isWalletAvailable(w.id)] as const)).then(
+				(pairs) => alive && setAvailable(Object.fromEntries(pairs)),
+			);
+		void check();
+		const t = setTimeout(check, 1500);
+		return () => {
+			alive = false;
+			clearTimeout(t);
+		};
+	}, []);
 
-	const choose = (w: WalletOption) => {
+	const stateOf = (w: WalletOption) =>
+		LIVE ? (available[w.id] === false ? "install" : "ready") : installed.includes(w.id) ? "ready" : w.state;
+
+	const choose = async (w: WalletOption) => {
+		if (LIVE) {
+			if (available[w.id] === false) {
+				if (w.id === "freighter") setFailed("freighter");
+				else window.open(w.installUrl, "_blank", "noopener,noreferrer");
+				return;
+			}
+			setFailed(null);
+			setConnecting(w.id);
+			const ok = await connect(w.id, role);
+			setConnecting(null);
+			if (ok) router.push(redirectTo);
+			return;
+		}
 		if (stateOf(w) === "ready") {
 			setFailed(null);
 			setFlow({ wallet: w.id, startAt: 3 });
@@ -81,7 +118,8 @@ export function ConnectPanel({
 						<div className="min-w-0 flex-1">
 							<p className="text-sm font-semibold text-ink">Connected with {walletName(wallet.provider)}</p>
 							<p className="truncate text-xs text-muted">
-								{ACCOUNT_NAMES[wallet.address]} · {shortAddress(wallet.address)}
+								{!LIVE && ACCOUNT_NAMES[wallet.address] ? `${ACCOUNT_NAMES[wallet.address]} · ` : ""}
+								{shortAddress(wallet.address)}
 							</p>
 						</div>
 					</div>
@@ -94,6 +132,24 @@ export function ConnectPanel({
 				</div>
 			) : (
 				<>
+					{LIVE && picked && (
+						<div className="mt-8 animate-fade-up rounded-[var(--radius-md)] border border-primary/60 bg-deep/40 p-4">
+							<Button
+								fullWidth
+								size="lg"
+								loading={connecting === picked}
+								loadingText="Check your wallet…"
+								disabled={!!connecting}
+								onClick={() => void choose(WALLETS.find((w) => w.id === picked)!)}
+								iconRight={<ArrowRight />}
+							>
+								Continue with {walletName(picked)} as {role}
+							</Button>
+							<p className="mt-2 text-center text-[10px] text-muted">
+								Your wallet asks you to sign a sign-in request. It moves no funds.
+							</p>
+						</div>
+					)}
 					<h3 className="mt-8 font-display text-base font-bold text-ink">1 · How will you use Boluck?</h3>
 					<div className="mt-4 grid grid-cols-2 gap-3 sm:gap-4" role="radiogroup" aria-label="Role">
 						{ROLES.map((r) => {
@@ -126,10 +182,12 @@ export function ConnectPanel({
 							return (
 								<li key={w.id}>
 									<button
-										onClick={() => choose(w)}
+										onClick={() => void choose(w)}
+										disabled={!!connecting}
+										aria-busy={connecting === w.id}
 										className={cn(
-											"group flex w-full items-center gap-3 rounded-[var(--radius-md)] border p-4 text-left transition-all duration-200 hover:-translate-y-px",
-											w.recommended
+											"group flex w-full items-center gap-3 rounded-[var(--radius-md)] border p-4 text-left transition-all duration-200 hover:-translate-y-px disabled:cursor-wait disabled:opacity-70 disabled:hover:translate-y-0",
+											w.recommended || picked === w.id
 												? "border-primary bg-deep/50 hover:bg-deep/70"
 												: "border-line bg-canvas/40 hover:border-subtle",
 										)}
@@ -148,9 +206,14 @@ export function ConnectPanel({
 											</span>
 											<span className="block text-[10px] text-muted">{w.kind}</span>
 										</span>
-										{ready ? (
+										{connecting === w.id ? (
 											<span className="flex items-center gap-1.5 text-[10px] font-semibold text-primary">
-												<span className="size-1.5 rounded-full bg-primary" /> Ready
+												<Spinner className="size-3.5" /> Check your wallet
+											</span>
+										) : ready ? (
+											<span className="flex items-center gap-1.5 text-[10px] font-semibold text-primary">
+												<span className="size-1.5 rounded-full bg-primary" />{" "}
+												{LIVE ? (w.id === "albedo" ? "Web" : "Detected") : "Ready"}
 											</span>
 										) : (
 											<span className="flex items-center gap-1 text-xs text-muted transition-colors group-hover:text-ink">
@@ -173,17 +236,29 @@ export function ConnectPanel({
 							</p>
 							<p className="mt-2 text-[10px] leading-relaxed text-muted sm:text-xs">
 								Freighter doesn&apos;t seem to be installed in this browser.
+								{LIVE && " Install it, reload this page, and switch it to Testnet."}
 							</p>
 							<div className="mt-3 flex items-center gap-4 text-xs">
-								<button
-									onClick={() => {
-										setFailed(null);
-										setFlow({ wallet: "freighter", startAt: 0 });
-									}}
-									className="inline-flex items-center gap-1 font-semibold text-review hover:underline"
-								>
-									Install <ExternalLink className="size-3" />
-								</button>
+								{LIVE ? (
+									<a
+										href="https://www.freighter.app/"
+										target="_blank"
+										rel="noopener noreferrer"
+										className="inline-flex items-center gap-1 font-semibold text-review hover:underline"
+									>
+										Install <ExternalLink className="size-3" />
+									</a>
+								) : (
+									<button
+										onClick={() => {
+											setFailed(null);
+											setFlow({ wallet: "freighter", startAt: 0 });
+										}}
+										className="inline-flex items-center gap-1 font-semibold text-review hover:underline"
+									>
+										Install <ExternalLink className="size-3" />
+									</button>
+								)}
 								<button onClick={() => setFailed(null)} className="text-muted hover:text-ink">
 									Dismiss
 								</button>
@@ -225,7 +300,7 @@ export function ConnectPanel({
 									<a
 										href={item.href}
 										target="_blank"
-										rel="noreferrer"
+										rel="noopener noreferrer"
 										className="inline-flex shrink-0 items-center gap-1 text-xs text-primary hover:underline"
 									>
 										{item.cta} <ExternalLink className="size-3" />
@@ -248,9 +323,9 @@ export function ConnectPanel({
 					role={role}
 					startAt={flow.startAt}
 					onClose={() => setFlow(null)}
-					onConnected={() => {
+					onConnected={async () => {
 						setInstalled((list) => [...new Set([...list, flow.wallet])]);
-						connect(flow.wallet, role);
+						await connect(flow.wallet, role);
 						setFlow(null);
 						router.push(redirectTo);
 					}}

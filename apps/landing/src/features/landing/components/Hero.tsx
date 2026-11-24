@@ -8,7 +8,7 @@ export function Hero() {
 				that&apos;s <span className="text-gradient">already funded.</span>
 			</h1>
 			<p className="mt-6 text-lg leading-relaxed font-medium text-muted sm:text-2xl sm:leading-10 3xl:text-[28px] 3xl:leading-[46px]">
-				Boluck lets teams post bounties, lock the reward in a smart contract, and release it to the contributor the moment their
+				Boluck lets teams post bounties, lock the reward in escrow on Stellar, and release it to the contributor the moment their
 				work is approved.
 			</p>
 			<a

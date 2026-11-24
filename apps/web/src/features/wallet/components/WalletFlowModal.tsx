@@ -82,7 +82,7 @@ export function WalletFlowModal({
 
 			<p className="mt-8 text-center text-[10px] text-muted">
 				Walkthrough only — nothing is installed and no real wallet is created.{" "}
-				<a href="https://www.freighter.app/" target="_blank" rel="noreferrer" className="hover:text-primary">
+				<a href="https://www.freighter.app/" target="_blank" rel="noopener noreferrer" className="hover:text-primary">
 					Get the real {name}
 				</a>
 			</p>

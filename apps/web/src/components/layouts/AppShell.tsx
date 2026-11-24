@@ -110,8 +110,8 @@ const CRUMBS: [RegExp, string[]][] = [
 	[/^\/bounties\/[^/]+\/fund/, ["Fund bounty"]],
 	[/^\/bounties\/[^/]+\/submit/, ["Submit work"]],
 	[/^\/bounties\/[^/]+\/review/, ["Review work"]],
-	[/^\/bounties\/[^/]+/, ["Explore bounties", "Bounty details"]],
-	[/^\/bounties/, ["Explore bounties"]],
+	[/^\/bounties\/[^/]+/, ["Your bounties", "Bounty details"]],
+	[/^\/bounties/, ["Your bounties"]],
 	[/^\/history/, ["Payment history"]],
 	[/^\/refunds/, ["Refunds & safety"]],
 	[/^\/settings/, ["Demo settings"]],
@@ -158,7 +158,10 @@ function NetworkPill() {
 			{open && (
 				<div className="absolute right-0 z-40 mt-2 w-56 animate-pop-in rounded-[var(--radius-md)] border border-line bg-surface p-3 text-xs shadow-[var(--shadow-pop)]">
 					<p className="font-semibold text-ink">Stellar Testnet</p>
-					<p className="mt-1 text-muted">Boluck uses testnet USDC. No real funds are ever moved. Mainnet comes after the MVP.</p>
+					<p className="mt-1 text-muted">
+						Boluck uses testnet USDC, locked in escrow on Stellar Testnet. No real funds are ever moved. Mainnet comes after the
+						MVP.
+					</p>
 				</div>
 			)}
 		</div>
@@ -178,12 +181,14 @@ function HeaderControls() {
 	);
 }
 
-/** Waits for persisted state, then requires a connected wallet. */
+/** Waits for persisted state, then requires a connected wallet (live: and the first load from the API). */
 function Gate({ children }: { children: ReactNode }) {
 	const hydrated = useAppStore((s) => s.hydrated);
 	const wallet = useAppStore((s) => s.wallet);
+	const loaded = useAppStore((s) => s.loaded);
+	const configured = useAppStore((s) => s.escrowConfig?.configured);
 
-	if (!hydrated) return <PageSkeleton />;
+	if (!hydrated || (wallet && !loaded)) return <PageSkeleton />;
 
 	if (!wallet) {
 		return (
@@ -198,7 +203,20 @@ function Gate({ children }: { children: ReactNode }) {
 		);
 	}
 
-	return <>{children}</>;
+	return (
+		<>
+			{configured === false && (
+				<p
+					className="mb-6 rounded-[var(--radius-md)] border border-review/60 bg-review/10 px-4 py-3 text-xs text-ink"
+					role="status"
+				>
+					<span className="font-semibold">Payments are temporarily unavailable.</span> You can still read your bounties and save
+					drafts; funding and payouts are paused.
+				</p>
+			)}
+			{children}
+		</>
+	);
 }
 
 function GateConnect() {

@@ -4,7 +4,9 @@ import {
 	Ban,
 	CheckCircle2,
 	CircleDollarSign,
+	ExternalLink,
 	FilePlus2,
+	Hourglass,
 	Lock,
 	RotateCcw,
 	Send,
@@ -31,6 +33,8 @@ const ICONS: Record<TxType, LucideIcon> = {
 	payout: CircleDollarSign,
 	cancel: Ban,
 	refund: Undo2,
+	cancel_request: Hourglass,
+	cancel_withdraw: Undo2,
 };
 
 const VERB: Record<TxType, string> = {
@@ -44,6 +48,8 @@ const VERB: Record<TxType, string> = {
 	payout: "released payment for",
 	cancel: "cancelled",
 	refund: "refunded",
+	cancel_request: "asked to cancel",
+	cancel_withdraw: "withdrew the cancellation request on",
 };
 
 function when(iso: string) {
@@ -78,10 +84,11 @@ export function ActivityFeed({
 		<ol className={cn("stagger divide-y divide-line", className)}>
 			{items.map((t) => {
 				const Icon = ICONS[t.type];
-				const who = t.from === me ? "You" : shortAddress(t.from);
+				// Refunds and automatic releases are paid out by the escrow itself, with no actor.
+				const who = !t.from ? "Escrow" : t.from === me ? "You" : shortAddress(t.from);
 				const failed = t.status === "failed";
 				return (
-					<li key={t.hash} className="flex gap-3 py-4 first:pt-0 last:pb-0">
+					<li key={t.id ?? t.hash} className="flex gap-3 py-4 first:pt-0 last:pb-0">
 						<span
 							className={cn(
 								"grid size-8 shrink-0 place-items-center rounded-full border bg-canvas",
@@ -103,6 +110,19 @@ export function ActivityFeed({
 							</p>
 							<p className="mt-1 text-[10px] text-muted">
 								{when(t.timestamp)} · {t.bountyId} · {TX_META[t.type].label}
+								{t.explorerUrl && (
+									<>
+										{" · "}
+										<a
+											href={t.explorerUrl}
+											target="_blank"
+											rel="noopener noreferrer"
+											className="inline-flex items-center gap-0.5 text-primary hover:underline"
+										>
+											Explorer <ExternalLink className="size-2.5" />
+										</a>
+									</>
+								)}
 							</p>
 						</div>
 					</li>

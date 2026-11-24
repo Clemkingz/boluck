@@ -13,10 +13,11 @@ import type { Bounty } from "@repo/stellar/bounty";
 import { cn } from "@/lib/utils";
 import { useAppStore } from "@/features/escrow/store";
 
+/** Filters over the bounties this wallet is part of (no public marketplace: out of the PRD's scope). */
 const FILTERS: { id: string; label: string; test: (b: Bounty, me?: string) => boolean }[] = [
-	{ id: "all", label: "All bounties", test: (b) => b.status !== "cancelled" && b.status !== "refunded" },
-	{ id: "open", label: "Open to claim", test: (b) => b.status === "funded" && !b.contributor },
-	{ id: "mine", label: "My bounties", test: (b, me) => b.issuer === me || b.contributor === me },
+	{ id: "all", label: "All my bounties", test: (b) => b.status !== "cancelled" && b.status !== "refunded" },
+	{ id: "issued", label: "Issued by me", test: (b, me) => b.issuer === me },
+	{ id: "assigned", label: "Assigned to me", test: (b, me) => b.contributor === me },
 	{ id: "draft", label: "Unfunded drafts", test: (b) => b.status === "draft" },
 	{ id: "active", label: "In progress", test: (b) => ["assigned", "in_progress", "revision_requested"].includes(b.status) },
 	{ id: "review", label: "In review", test: (b) => b.status === "submitted" || b.status === "approved" },
@@ -24,7 +25,7 @@ const FILTERS: { id: string; label: string; test: (b: Bounty, me?: string) => bo
 	{ id: "closed", label: "Cancelled & refunded", test: (b) => b.status === "cancelled" || b.status === "refunded" },
 ];
 
-export function BountiesView() {
+export function MyBounties() {
 	const router = useRouter();
 	const pathname = usePathname();
 	const params = useSearchParams();
@@ -32,14 +33,15 @@ export function BountiesView() {
 	const [query, setQuery] = useState("");
 	const [open, setOpen] = useState(false);
 	const menuRef = useClickOutside<HTMLDivElement>(open, () => setOpen(false));
-	const bounties = useAppStore((s) => s.bounties);
+	const all = useAppStore((s) => s.bounties);
 	const me = useAppStore((s) => s.wallet?.address);
+	const bounties = useMemo(() => all.filter((b) => b.issuer === me || b.contributor === me), [all, me]);
 
 	const visible = useMemo(() => {
 		const q = query.trim().toLowerCase();
 		return bounties
 			.filter((b) => filter.test(b, me))
-			.filter((b) => !q || [b.title, b.id, b.project].some((v) => v.toLowerCase().includes(q)));
+			.filter((b) => !q || [b.title, b.id, b.project].filter(Boolean).some((v) => v.toLowerCase().includes(q)));
 	}, [bounties, filter, me, query]);
 
 	const setFilter = (id: string) => {
@@ -50,9 +52,9 @@ export function BountiesView() {
 	return (
 		<>
 			<PageHeader
-				eyebrow="The work is real. The reward is ready."
-				title="Find your next opportunity."
-				description="Each open bounty has a visible reward, a clear brief, and funds set aside before work begins."
+				eyebrow="Every bounty you're part of"
+				title="Your bounties."
+				description="Bounties you issued and bounties you were assigned, each with its reward and escrow status."
 				actions={
 					<ButtonLink href="/bounties/new" icon={<Plus />}>
 						Post a bounty
@@ -62,12 +64,12 @@ export function BountiesView() {
 
 			<div className="mb-6 flex flex-col gap-3 sm:flex-row sm:gap-4">
 				<label className="relative flex-1">
-					<span className="sr-only">Search bounties or projects</span>
+					<span className="sr-only">Search your bounties</span>
 					<Search className="pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2 text-muted" />
 					<input
 						value={query}
 						onChange={(e) => setQuery(e.target.value)}
-						placeholder="Search bounties or projects…"
+						placeholder="Search by title or reference…"
 						className="h-10 w-full rounded-[var(--radius-sm)] border border-line bg-canvas pr-4 pl-11 text-sm text-ink placeholder:text-[11px] placeholder:text-muted focus:border-primary focus:ring-3 focus:ring-primary/15 focus:outline-none"
 					/>
 				</label>
@@ -118,8 +120,12 @@ export function BountiesView() {
 				{visible.length === 0 ? (
 					<EmptyState
 						icon={<FolderOpen />}
-						title="No bounties match"
-						description="Try a different search or filter."
+						title={bounties.length ? "No bounties match" : "No bounties yet"}
+						description={
+							bounties.length
+								? "Try a different search or filter."
+								: "Post a bounty, or ask an issuer to assign you one using your wallet address."
+						}
 						action={
 							<Button
 								size="sm"

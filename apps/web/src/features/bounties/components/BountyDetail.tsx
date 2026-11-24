@@ -5,16 +5,20 @@ import {
 	ArrowRight,
 	BadgeCheck,
 	CircleCheck,
+	ExternalLink,
 	FileClock,
+	Hourglass,
+	PenLine,
 	Link2,
 	Lock,
 	Send,
 	ShieldCheck,
+	Trash2,
 	UserCheck,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { ActivityFeed } from "@/features/bounties/components/ActivityFeed";
 import { BountyHeaderCard, BountyNotFound, useBountyRoute, type BountyParams } from "@/features/bounties/components/BountyRoute";
 import { LifecycleStepper } from "@/features/bounties/components/LifecycleStepper";
@@ -24,13 +28,14 @@ import { Input } from "@repo/ui/field";
 import { CheckList, CopyButton } from "@repo/ui/misc";
 import { DetailRows, Panel } from "@repo/ui/panel";
 import { Reveal } from "@repo/ui/reveal";
-import { txReference } from "@repo/stellar/network";
+import { explorerTxUrl, txReference } from "@repo/stellar/network";
 import { walletName } from "@/features/wallet/wallets";
 import { canAssign } from "@repo/stellar/escrow";
 import { formatAmount, formatDate, formatDateTime, formatUsd, shortAddress } from "@repo/stellar/format";
 import { ADA, ACCOUNT_NAMES } from "@/lib/api/mock-data";
 import type { Bounty, Transaction } from "@repo/stellar/bounty";
 import { useAppStore } from "@/features/escrow/store";
+import { LIVE } from "@/lib/api/config";
 
 export function BountyDetail({ params }: { params: BountyParams }) {
 	const { id, bounty, isIssuer, isContributor } = useBountyRoute(params);
@@ -45,12 +50,20 @@ export function BountyDetail({ params }: { params: BountyParams }) {
 	const showFunding = search.get("confirmed") === "fund" && !!fundTx && bounty.status !== "draft";
 	const caption =
 		bounty.status === "draft"
-			? "Ready to fund"
+			? bounty.chain
+				? bounty.chain.onChain
+					? "Published · awaiting funding"
+					: "Draft · editable"
+				: "Ready to fund"
 			: bounty.status === "paid"
 				? "Released to contributor"
 				: bounty.status === "refunded" || bounty.status === "cancelled"
 					? "Escrow closed"
-					: "Reward reserved in demo escrow";
+					: LIVE
+						? bounty.chain?.fundingVerified
+							? "Reward verified in escrow"
+							: "Not funded yet"
+						: "Reward reserved in demo escrow";
 	const mine = isIssuer || isContributor;
 
 	return (
@@ -84,7 +97,7 @@ export function BountyDetail({ params }: { params: BountyParams }) {
 						</Reveal>
 						<Reveal>
 							<Panel className="p-6">
-								<h2 className="text-sm font-semibold text-ink">Contract activity</h2>
+								<h2 className="text-sm font-semibold text-ink">Escrow activity</h2>
 								<p className="mt-1 text-[10px] text-muted">Every escrow event for this bounty, newest first.</p>
 								<ActivityFeed transactions={txs} bounties={bounties} me={address} className="mt-6" />
 							</Panel>
@@ -102,8 +115,9 @@ export function BountyDetail({ params }: { params: BountyParams }) {
 								<ShieldCheck className="size-4 text-primary" /> Escrow protection
 							</h2>
 							<p className="mt-4 text-[10px] leading-relaxed text-muted">
-								Funds are represented as escrowed only in this demo. On the live product, the escrow contract would enforce
-								funding, assignment, approval, and refund rules.
+								{LIVE
+									? "The reward sits in a Stellar claimable balance. Boluck's escrow rules decide who can claim it: the contributor once the work is approved, or the issuer under the cancellation rules."
+									: "Funds are represented as escrowed only in this demo. On Stellar, the escrow rules enforce funding, assignment, approval, and refund."}
 							</p>
 							<Link
 								href={`/refunds?bounty=${bounty.id}`}
@@ -131,9 +145,13 @@ function NextStep({
 	fundTx?: Transaction;
 }) {
 	const accept = useAppStore((s) => s.acceptAssignment);
-	const claim = useAppStore((s) => s.claimBounty);
 	const release = useAppStore((s) => s.releasePayment);
+	const claimPayment = useAppStore((s) => s.claimPayment);
+	const address = useAppStore((s) => s.wallet?.address);
 	const [busy, setBusy] = useState(false);
+	const can = (k: string) => !!b.chain?.availableActions.includes(k as never);
+	/** Live: a button only appears when the server lists one of its actions (guide §1.6). Demo: always. */
+	const allowed = (...kinds: string[]) => !b.chain || kinds.some(can);
 	const href = `/bounties/${b.id}`;
 
 	const run = (fn: () => Promise<boolean>) => async () => {
@@ -148,16 +166,27 @@ function NextStep({
 	if (isIssuer) {
 		switch (b.status) {
 			case "draft":
-				action = (
+				action = !allowed("create", "fund") ? (
+					<Waiting icon={<FileClock />}>Not ready to fund</Waiting>
+				) : (
 					<ButtonLink href={`${href}/fund`} fullWidth size="lg" icon={<Lock />}>
-						Fund {formatUsd(b.rewardAmount)} USDC
+						{can("create") ? "Publish and fund" : "Fund"} {formatUsd(b.rewardAmount)} USDC
 					</ButtonLink>
 				);
-				note = "You will review the amount and confirm on the funding screen.";
+				note = b.chain?.onChain
+					? "Published on Stellar. Fund it to lock the reward in escrow."
+					: "You will review the amount and confirm on the funding screen.";
+				if (!b.chain || !b.chain.onChain)
+					action = (
+						<div className="space-y-3">
+							{action}
+							<DraftTools bounty={b} />
+						</div>
+					);
 				break;
 			case "funded":
-				action = <AssignForm bounty={b} />;
-				note = "Or leave it open — any eligible contributor can claim it.";
+				action = allowed("assign") ? <AssignForm bounty={b} /> : <Waiting icon={<FileClock />}>Funding confirmed</Waiting>;
+				note = "The contributor can see the reward is locked before they accept.";
 				break;
 			case "assigned":
 				action = <Waiting icon={<FileClock />}>Waiting for acceptance</Waiting>;
@@ -172,15 +201,19 @@ function NextStep({
 				note = "The contributor is updating their submission.";
 				break;
 			case "submitted":
-				action = (
+				action = allowed("approve", "request_revision") ? (
 					<ButtonLink href={`${href}/review`} fullWidth size="lg" icon={<BadgeCheck />}>
 						Review submission
 					</ButtonLink>
+				) : (
+					<Waiting icon={<FileClock />}>Review window closed</Waiting>
 				);
 				note = "Approve to release the reward, or request a revision.";
 				break;
 			case "approved":
-				action = (
+				action = !allowed("release") ? (
+					<Waiting icon={<FileClock />}>Releasing automatically</Waiting>
+				) : (
 					<Button fullWidth size="lg" icon={<Send />} loading={busy} loadingText="Releasing…" onClick={run(() => release(b.id))}>
 						Release {formatUsd(b.rewardAmount)} USDC
 					</Button>
@@ -188,7 +221,7 @@ function NextStep({
 				note = "Approved — release the escrowed reward to the contributor.";
 				break;
 			case "paid":
-				action = <Released />;
+				action = <Released automatically={b.chain?.paidAutomatically} />;
 				break;
 			default:
 				action = (
@@ -200,7 +233,9 @@ function NextStep({
 	} else if (isContributor) {
 		switch (b.status) {
 			case "assigned":
-				action = (
+				action = !allowed("accept") ? (
+					<Waiting icon={<FileClock />}>Not available right now</Waiting>
+				) : (
 					<Button
 						fullWidth
 						size="lg"
@@ -216,31 +251,48 @@ function NextStep({
 				break;
 			case "in_progress":
 			case "revision_requested":
-				action = (
+				action = !allowed("submit") ? (
+					<Waiting icon={<FileClock />}>Submission window closed</Waiting>
+				) : (
 					<ButtonLink href={`${href}/submit`} fullWidth size="lg" icon={<Send />}>
 						{b.status === "revision_requested" ? "Submit a revision" : "Submit completed work"}
 					</ButtonLink>
 				);
 				note = "Share a link the issuer can review.";
 				break;
-			case "submitted":
 			case "approved":
+			case "submitted":
+				// Fallback for the server's automatic release, only when the server offers it.
+				if (can("auto_release")) {
+					action = (
+						<Button
+							fullWidth
+							size="lg"
+							icon={<CircleCheck />}
+							loading={busy}
+							loadingText="Waiting for your wallet…"
+							onClick={run(() => claimPayment(b.id))}
+						>
+							Claim payment · {formatUsd(b.rewardAmount)} USDC
+						</Button>
+					);
+					note = "The reward can be released to you now.";
+					break;
+				}
+				if (b.status === "approved") {
+					action = <Waiting icon={<FileClock />}>Approved · awaiting release</Waiting>;
+					note = "The issuer releases the reward next.";
+					break;
+				}
 				action = <Waiting icon={<FileClock />}>Awaiting issuer review</Waiting>;
 				note = "The reward stays locked while your work is reviewed.";
 				break;
 			case "paid":
-				action = <Released />;
+				action = <Released automatically={b.chain?.paidAutomatically} />;
 				break;
 			default:
 				action = <Waiting icon={<ShieldCheck />}>Bounty closed</Waiting>;
 		}
-	} else if (b.status === "funded" && !b.contributor) {
-		action = (
-			<Button fullWidth size="lg" icon={<CircleCheck />} loading={busy} loadingText="Accepting…" onClick={run(() => claim(b.id))}>
-				Accept this bounty
-			</Button>
-		);
-		note = "The reward is verified in escrow. Accepting assigns it to your wallet.";
 	} else {
 		action = <Waiting icon={<UserCheck />}>View only</Waiting>;
 		note = "Switch to the issuer or assigned contributor wallet to take action.";
@@ -250,7 +302,9 @@ function NextStep({
 		<Panel className="p-6">
 			<h2 className="font-display text-base font-bold tracking-[-0.02em] text-ink">Next step</h2>
 			<p className="mt-1 text-[10px] text-muted">Continue this bounty&apos;s journey.</p>
+			{b.chain?.cancelRequestedBy && <CancelRequestBanner bounty={b} mine={b.chain.cancelRequestedBy === address} />}
 			<div className="mt-6">{action}</div>
+			<AutoRelease bounty={b} />
 			{note && <p className="mt-3 text-[10px] text-muted">{note}</p>}
 			<div className="mt-6 h-px bg-line" />
 			<DetailRows
@@ -259,15 +313,217 @@ function NextStep({
 					{ label: "Reward", value: `${formatUsd(b.rewardAmount)} USDC` },
 					{ label: "Deadline", value: formatDate(b.deadline) },
 					{
-						label: "Assigned to",
-						value: b.contributor ? <span title={ACCOUNT_NAMES[b.contributor]}>{shortAddress(b.contributor)}</span> : "Open",
+						// A contributor named on a draft is only assigned (on Stellar) after funding.
+						label: b.chain && b.contributor && (b.status === "draft" || b.status === "funded") ? "To be assigned" : "Assigned to",
+						value: b.contributor ? <span title={ACCOUNT_NAMES[b.contributor]}>{shortAddress(b.contributor)}</span> : "Not yet",
 					},
+					...(b.chain
+						? [
+								{
+									label: "Funding",
+									value: b.chain.fundingVerified ? (
+										<span className="inline-flex items-center gap-1 text-primary">
+											<ShieldCheck className="size-3.5" /> Verified on Stellar
+										</span>
+									) : (
+										<span className="text-muted">Not funded yet</span>
+									),
+								},
+							]
+						: []),
+					...(b.chain?.fundTxHash && !fundTx
+						? [
+								{
+									label: "Funding reference",
+									value: (
+										<a
+											href={explorerTxUrl(b.chain.fundTxHash)}
+											target="_blank"
+											rel="noopener noreferrer"
+											className="inline-flex items-center gap-1 font-mono text-xs text-primary hover:underline"
+										>
+											{b.chain.fundTxHash.slice(0, 10)}… <ExternalLink className="size-3" />
+										</a>
+									),
+								},
+							]
+						: []),
 					...(fundTx
-						? [{ label: "Funding reference", value: <span className="font-mono text-xs">{`DEMO-FUND-${b.id}`}</span> }]
+						? [
+								{
+									label: "Funding reference",
+									value: fundTx.explorerUrl ? (
+										<a
+											href={fundTx.explorerUrl}
+											target="_blank"
+											rel="noopener noreferrer"
+											className="inline-flex items-center gap-1 font-mono text-xs text-primary hover:underline"
+										>
+											{fundTx.hash.slice(0, 10)}… <ExternalLink className="size-3" />
+										</a>
+									) : (
+										<span className="font-mono text-xs">{`DEMO-FUND-${b.id}`}</span>
+									),
+								},
+							]
 						: []),
 				]}
 			/>
 		</Panel>
+	);
+}
+
+/**
+ * Deadlines the server enforces on its own (guide §6): the review window after a submission (the reward then releases
+ * to the contributor automatically), and the revision window after a revision request.
+ */
+function AutoRelease({ bounty: b }: { bounty: Bounty }) {
+	const enabled = useAppStore((s) => s.escrowConfig?.autoReleaseEnabled);
+	const address = useAppStore((s) => s.wallet?.address);
+	const now = useNow();
+	if (!b.chain) return null;
+	const issuer = b.issuer === address;
+	const contributor = b.contributor === address;
+
+	if (b.chain.autoReleaseError && contributor)
+		return (
+			<p
+				className="mt-3 rounded-[var(--radius-sm)] border border-attention/50 bg-attention/10 p-3 text-[10px] leading-relaxed text-ink"
+				role="alert"
+			>
+				Your automatic payment did not go through. Check that USDC is enabled in your wallet.
+			</p>
+		);
+
+	if (b.status === "submitted" && b.chain.reviewDueAt && enabled) {
+		const left = new Date(b.chain.reviewDueAt).getTime() - now;
+		return (
+			<p
+				className={`mt-3 flex items-start gap-2 text-[10px] leading-relaxed ${issuer ? "font-semibold text-review" : "text-muted"}`}
+			>
+				<Hourglass className="mt-px size-3.5 shrink-0" />
+				{issuer
+					? `Review by ${formatDateTime(b.chain.reviewDueAt)} or the reward releases automatically${left > 0 ? ` (${countdown(left)} left)` : ""}.`
+					: left > 0
+						? `If the issuer doesn't review within ${countdown(left)}, the reward releases to you automatically.`
+						: "The review window has ended; the reward is being released to you."}
+			</p>
+		);
+	}
+	if (b.status === "approved" && b.chain.reviewDueAt && enabled) {
+		const left = new Date(b.chain.reviewDueAt).getTime() - now;
+		return (
+			<p className="mt-3 flex items-start gap-2 text-[10px] leading-relaxed text-muted">
+				<Hourglass className="mt-px size-3.5 shrink-0" />
+				{left > 0
+					? `Releases automatically in ${countdown(left)} if not released sooner.`
+					: "Releasing automatically within a few minutes."}
+			</p>
+		);
+	}
+	if (b.status === "revision_requested" && b.chain.revisionDueAt) {
+		const left = new Date(b.chain.revisionDueAt).getTime() - now;
+		return (
+			<p
+				className={`mt-3 flex items-start gap-2 text-[10px] leading-relaxed ${contributor ? "font-semibold text-review" : "text-muted"}`}
+			>
+				<Hourglass className="mt-px size-3.5 shrink-0" />
+				{left > 0
+					? `${contributor ? "Resubmit" : "The contributor can resubmit"} within ${countdown(left)} (by ${formatDateTime(b.chain.revisionDueAt)}).`
+					: "The revision window has ended."}
+			</p>
+		);
+	}
+	return null;
+}
+
+/** Off-chain drafts: edit or delete before publishing. No signature, nothing on Stellar yet. */
+function DraftTools({ bounty }: { bounty: Bounty }) {
+	const router = useRouter();
+	const deleteDraft = useAppStore((s) => s.deleteDraft);
+	const [confirming, setConfirming] = useState(false);
+	const [busy, setBusy] = useState(false);
+	return confirming ? (
+		<div className="grid grid-cols-2 gap-3">
+			<Button variant="secondary" onClick={() => setConfirming(false)} disabled={busy}>
+				Keep it
+			</Button>
+			<Button
+				variant="danger"
+				loading={busy}
+				loadingText="Deleting…"
+				onClick={async () => {
+					setBusy(true);
+					const ok = await deleteDraft(bounty.id);
+					setBusy(false);
+					if (ok) router.push("/overview");
+				}}
+			>
+				Delete draft
+			</Button>
+		</div>
+	) : (
+		<div className="grid grid-cols-2 gap-3">
+			<ButtonLink href={`/bounties/${bounty.id}/edit`} variant="secondary" icon={<PenLine />}>
+				Edit
+			</ButtonLink>
+			<Button variant="ghost" icon={<Trash2 />} onClick={() => setConfirming(true)}>
+				Delete
+			</Button>
+		</div>
+	);
+}
+
+function countdown(ms: number) {
+	const mins = Math.floor(ms / 60_000);
+	const d = Math.floor(mins / 1440);
+	const h = Math.floor((mins % 1440) / 60);
+	const m = mins % 60;
+	return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${Math.max(m, 1)}m`;
+}
+
+/** Current time, refreshed every 30 s (kept out of render for purity). */
+function useNow() {
+	const [now, setNow] = useState(() => Date.now());
+	useEffect(() => {
+		const t = setInterval(() => setNow(Date.now()), 30_000);
+		return () => clearInterval(t);
+	}, []);
+	return now;
+}
+
+/** Assigned bounties end only by agreement: one party asks, the other confirms (or the asker withdraws). */
+function CancelRequestBanner({ bounty: b, mine }: { bounty: Bounty; mine: boolean }) {
+	const withdraw = useAppStore((s) => s.withdrawCancel);
+	const confirm = useAppStore((s) => s.confirmCancel);
+	const [busy, setBusy] = useState(false);
+	const go = (fn: () => Promise<boolean>) => async () => {
+		setBusy(true);
+		await fn();
+		setBusy(false);
+	};
+	return (
+		<div className="mt-5 animate-pop-in rounded-[var(--radius-md)] border border-review/60 bg-review/10 p-4" role="status">
+			<p className="flex items-center gap-2 text-xs font-semibold text-ink">
+				<Hourglass className="size-4 text-review" />
+				{mine ? "You asked to cancel this bounty" : `${shortAddress(b.chain?.cancelRequestedBy)} asked to cancel this bounty`}
+			</p>
+			<p className="mt-1.5 text-[10px] leading-relaxed text-muted">
+				{mine
+					? "Nothing moves until the other party confirms. You can withdraw the request."
+					: `If you agree, ${formatAmount(b.escrowBalance)} returns to the issuer and the bounty closes.`}
+			</p>
+			<Button
+				className="mt-3"
+				size="sm"
+				variant={mine ? "secondary" : "primary"}
+				loading={busy}
+				loadingText="Waiting for your wallet…"
+				onClick={go(() => (mine ? withdraw(b.id) : confirm(b.id)))}
+			>
+				{mine ? "Withdraw request" : "Agree and cancel"}
+			</Button>
+		</div>
 	);
 }
 
@@ -280,10 +536,10 @@ function Waiting({ icon, children }: { icon: ReactNode; children: ReactNode }) {
 	);
 }
 
-function Released() {
+function Released({ automatically }: { automatically?: boolean }) {
 	return (
 		<div className="flex h-11 animate-pop-in items-center justify-center gap-2 rounded-[var(--radius-sm)] border border-primary bg-deep/40 text-[15px] text-primary">
-			<CircleCheck className="size-5" /> Reward released
+			<CircleCheck className="size-5" /> {automatically ? "Released automatically" : "Reward released"}
 		</div>
 	);
 }
@@ -291,7 +547,8 @@ function Released() {
 function AssignForm({ bounty }: { bounty: Bounty }) {
 	const assign = useAppStore((s) => s.assignContributor);
 	const caller = useAppStore((s) => s.wallet?.address);
-	const [value, setValue] = useState("");
+	// Live: the contributor named when the bounty was created, if any.
+	const [value, setValue] = useState(bounty.contributor ?? "");
 	const [error, setError] = useState<string>();
 	const [busy, setBusy] = useState(false);
 	return (
@@ -300,7 +557,7 @@ function AssignForm({ bounty }: { bounty: Bounty }) {
 			className="space-y-3"
 			onSubmit={async (e) => {
 				e.preventDefault();
-				const reason = canAssign(bounty, caller, value.trim());
+				const reason = canAssign({ ...bounty, contributor: undefined }, caller, value.trim());
 				setError(reason ?? undefined);
 				if (reason) return;
 				setBusy(true);
@@ -324,9 +581,15 @@ function AssignForm({ bounty }: { bounty: Bounty }) {
 			<Button type="submit" fullWidth size="lg" icon={<UserCheck />} loading={busy} loadingText="Assigning…">
 				Assign contributor
 			</Button>
-			<button type="button" onClick={() => setValue(ADA)} className="w-full text-center text-[10px] text-primary hover:underline">
-				Demo: use {ACCOUNT_NAMES[ADA]}&apos;s wallet
-			</button>
+			{!LIVE && (
+				<button
+					type="button"
+					onClick={() => setValue(ADA)}
+					className="w-full text-center text-[10px] text-primary hover:underline"
+				>
+					Demo: use {ACCOUNT_NAMES[ADA]}&apos;s wallet
+				</button>
+			)}
 		</form>
 	);
 }
@@ -363,12 +626,26 @@ function FundingConfirmed({ bounty, tx }: { bounty: Bounty; tx: Transaction }) {
 			<DetailRows
 				className="mt-3 border-t border-line pt-2"
 				rows={[
-					{ label: "Ledger", value: `#${tx.ledger.toLocaleString("en-US")}` },
+					...(tx.ledger ? [{ label: "Ledger", value: `#${tx.ledger.toLocaleString("en-US")}` }] : []),
 					{ label: "Deadline", value: formatDate(bounty.deadline) },
 					{ label: "Assigned to", value: bounty.contributor ? shortAddress(bounty.contributor) : "Open" },
 					{ label: "Funded from", value: `${walletName(provider)} · ${shortAddress(tx.from)}` },
 					{ label: "Confirmed", value: formatDateTime(tx.timestamp) },
-					{ label: "Reference", value: <span className="font-mono text-[10px]">{txReference(tx)}</span> },
+					tx.explorerUrl
+						? {
+								label: "Explorer",
+								value: (
+									<a
+										href={tx.explorerUrl}
+										target="_blank"
+										rel="noopener noreferrer"
+										className="inline-flex items-center gap-1 text-primary hover:underline"
+									>
+										stellar.expert <ExternalLink className="size-3" />
+									</a>
+								),
+							}
+						: { label: "Reference", value: <span className="font-mono text-[10px]">{txReference(tx)}</span> },
 				]}
 			/>
 			<div className="mt-4 grid gap-3">
@@ -380,8 +657,9 @@ function FundingConfirmed({ bounty, tx }: { bounty: Bounty; tx: Transaction }) {
 				</Button>
 			</div>
 			<p className="mt-4 border-t border-line pt-4 text-center text-[10px] leading-relaxed text-muted">
-				The contributor can now see the reward is funded before accepting the work. Explorer links will appear here once the
-				contract is live.
+				{LIVE
+					? "The contributor can now see the reward is funded before accepting the work."
+					: "The contributor can now see the reward is funded before accepting the work. In live mode every step links to stellar.expert."}
 			</p>
 		</Panel>
 	);
@@ -404,7 +682,7 @@ function WorkAndReview({ bounty: b, isIssuer }: { bounty: Bounty; isIssuer: bool
 				<a
 					href={latest.deliverableUrl}
 					target="_blank"
-					rel="noreferrer"
+					rel="noopener noreferrer"
 					className="mt-4 flex items-center gap-2 text-[10px] break-all text-primary hover:underline"
 				>
 					<Link2 className="size-4 shrink-0" /> {latest.deliverableUrl}

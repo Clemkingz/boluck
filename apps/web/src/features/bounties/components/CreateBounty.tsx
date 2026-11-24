@@ -13,6 +13,8 @@ import { isStellarAddress } from "@repo/stellar/address";
 import { cn } from "@/lib/utils";
 import { useAppStore } from "@/features/escrow/store";
 import { toast } from "@repo/ui/toast";
+import { LIVE } from "@/lib/api/config";
+import type { Bounty } from "@repo/stellar/bounty";
 
 type Values = {
 	title: string;
@@ -45,32 +47,66 @@ const lines = (v: string) =>
 function validate(v: Values, issuer?: string) {
 	const e: Partial<Record<keyof Values, string>> = {};
 	if (v.title.trim().length < 4) e.title = "Give the bounty a clear title (at least 4 characters).";
-	if (v.project.trim().length < 2) e.project = "Add the project or team name.";
+	// The API has no project field; the demo shows it next to the bounty id.
+	if (!LIVE && v.project.trim().length < 2) e.project = "Add the project or team name.";
 	if (!v.deadline) e.deadline = "Pick a completion deadline.";
 	else if (new Date(`${v.deadline}T23:59:00Z`) < new Date()) e.deadline = "The deadline must be in the future.";
+	else if (new Date(`${v.deadline}T23:59:00Z`).getTime() > Date.now() + 365 * 86_400_000)
+		e.deadline = "Pick a deadline within the next 365 days.";
 	if (lines(v.requirements).length === 0) e.requirements = "Add at least one completion requirement.";
 	if (v.description.trim().length < 20) e.description = "Tell contributors what to build in at least 20 characters.";
 	if (lines(v.acceptance).length === 0) e.acceptance = "Add at least one acceptance check.";
-	const rewardError = validateReward(Number(v.reward));
+	for (const k of ["description", "requirements", "acceptance"] as const)
+		if (v[k].length > 5000) e[k] = "Keep this under 5,000 characters.";
+	const rewardError =
+		validateReward(Number(v.reward)) ?? (/^\d+(\.\d{1,2})?$/.test(v.reward.trim()) ? null : "Use up to 2 decimals, like 300.00.");
 	if (!v.reward || rewardError) e.reward = rewardError ?? "Enter a reward amount.";
 	if (v.contributor && !isStellarAddress(v.contributor)) e.contributor = "Enter a valid Stellar address (G…, 56 characters).";
 	else if (v.contributor && v.contributor.trim() === issuer) e.contributor = "You can't assign yourself.";
 	return e;
 }
 
-export function CreateBountyForm() {
+/** API field (`error.fields[].field`) → form input. */
+const API_FIELDS: Record<string, keyof Values> = {
+	title: "title",
+	description: "description",
+	requirements: "requirements",
+	acceptanceCriteria: "acceptance",
+	rewardAmount: "reward",
+	deadline: "deadline",
+	contributorAddress: "contributor",
+};
+
+const fromBounty = (b: Bounty): Values => ({
+	title: b.title,
+	project: b.project,
+	deadline: b.deadline.slice(0, 10),
+	requirements: b.requirements.join("\n"),
+	description: b.description,
+	acceptance: b.acceptanceCriteria.join("\n"),
+	contributor: b.contributor ?? "",
+	reward: b.chain?.reward ?? String(b.rewardAmount),
+});
+
+/** Create a bounty, or edit an unpublished draft (`initial`). */
+export function CreateBountyForm({ initial }: { initial?: Bounty }) {
 	const router = useRouter();
 	const createBounty = useAppStore((s) => s.createBounty);
+	const updateDraft = useAppStore((s) => s.updateDraft);
 	const setRole = useAppStore((s) => s.setRole);
 	const role = useAppStore((s) => s.role);
 	const issuer = useAppStore((s) => s.wallet?.address);
-	const [values, setValues] = useState<Values>(EMPTY);
+	const [values, setValues] = useState<Values>(() => (initial ? fromBounty(initial) : EMPTY));
 	const [touched, setTouched] = useState(false);
 	const [busy, setBusy] = useState(false);
 	const [minDate] = useState(() => new Date(Date.now() + 86_400_000).toISOString().slice(0, 10));
 
 	const errors = validate(values, issuer);
-	const show = (k: keyof Values) => (touched ? errors[k] : undefined);
+	// The API's own field messages (VALIDATION_FAILED / BOUNTY_INCOMPLETE / INVALID_CONTRIBUTOR), beside the inputs.
+	const apiErrors = useAppStore((s) => s.fieldErrors);
+	const clearApiErrors = useAppStore((s) => s.clearFieldErrors);
+	const apiError = (k: keyof Values) => Object.entries(apiErrors).find(([f]) => API_FIELDS[f] === k)?.[1];
+	const show = (k: keyof Values) => (touched ? errors[k] : undefined) ?? apiError(k);
 	const reward = Number(values.reward) || 0;
 
 	const bind = (k: keyof Values) => ({
@@ -78,7 +114,10 @@ export function CreateBountyForm() {
 		name: k,
 		value: values[k],
 		"aria-invalid": !!show(k),
-		onChange: (e: { target: { value: string } }) => setValues((v) => ({ ...v, [k]: e.target.value })),
+		onChange: (e: { target: { value: string } }) => {
+			if (apiError(k)) clearApiErrors();
+			setValues((v) => ({ ...v, [k]: e.target.value }));
+		},
 	});
 
 	async function onSubmit(e: FormEvent) {
@@ -94,26 +133,40 @@ export function CreateBountyForm() {
 		}
 		if (role !== "issuer") setRole("issuer");
 		setBusy(true);
-		const id = await createBounty({
+		const input = {
 			title: values.title.trim(),
 			project: values.project.trim(),
 			description: values.description.trim(),
 			rewardAmount: reward,
+			rewardText: values.reward.trim(),
 			deadline: new Date(`${values.deadline}T23:59:00Z`).toISOString(),
 			requirements: lines(values.requirements),
 			acceptanceCriteria: lines(values.acceptance),
 			contributor: values.contributor.trim() || undefined,
-		});
+		};
+		if (initial) {
+			const ok = await updateDraft(initial.id, input);
+			setBusy(false);
+			if (ok) router.push(`/bounties/${initial.id}`);
+			return;
+		}
+		const id = await createBounty(input);
 		setBusy(false);
 		if (id) router.push(`/bounties/${id}/fund`);
+		else requestAnimationFrame(() => document.querySelector<HTMLElement>("[aria-invalid=true]")?.focus());
 	}
 
 	return (
 		<>
 			<PageHeader
-				eyebrow="Set a clear deal"
-				title="Create a bounty"
-				description="Be specific about the work. Lock the reward before anyone starts."
+				eyebrow={initial ? `Draft ${initial.id}` : "Set a clear deal"}
+				title={initial ? "Edit your draft" : "Create a bounty"}
+				description={
+					initial
+						? "Drafts can change freely until you publish them. After that the terms are locked."
+						: "Be specific about the work. Lock the reward before anyone starts."
+				}
+				back={initial ? { href: `/bounties/${initial.id}`, label: "Back to bounty" } : undefined}
 			/>
 
 			<form onSubmit={onSubmit} noValidate className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_346px] [&>*]:min-w-0">
@@ -124,10 +177,12 @@ export function CreateBountyForm() {
 							<Field label="Bounty title" hint="A clear, action-oriented summary" htmlFor="title" error={show("title")}>
 								<Input {...bind("title")} placeholder="e.g. Build a contributor onboarding flow" maxLength={120} />
 							</Field>
-							<div className="grid gap-6 sm:grid-cols-2 sm:gap-4">
-								<Field label="Project or team" htmlFor="project" error={show("project")}>
-									<Input {...bind("project")} placeholder="e.g. Stellar Commons" />
-								</Field>
+							<div className={cn("grid gap-6", !LIVE && "sm:grid-cols-2 sm:gap-4")}>
+								{!LIVE && (
+									<Field label="Project or team" htmlFor="project" error={show("project")}>
+										<Input {...bind("project")} placeholder="e.g. Stellar Commons" />
+									</Field>
+								)}
 								<Field label="Completion deadline" htmlFor="deadline" error={show("deadline")}>
 									<Input {...bind("deadline")} type="date" min={minDate} />
 								</Field>
@@ -165,10 +220,10 @@ export function CreateBountyForm() {
 					</Panel>
 
 					<Panel className="p-5 sm:p-8">
-						<SectionTitle n="02" title="Who can claim this?" sub="Set an optional contributor wallet." />
+						<SectionTitle n="02" title="Who will do the work?" sub="Name the contributor now, or assign one after funding." />
 						<Field
 							label="Contributor wallet address"
-							hint="Leave blank to make this bounty open to eligible contributors"
+							hint="Optional. If you add it now, they're assigned right after funding."
 							htmlFor="contributor"
 							error={show("contributor")}
 							className="mt-8"
@@ -249,11 +304,21 @@ export function CreateBountyForm() {
 						<Button variant="secondary" size="lg" onClick={() => router.back()} className="px-8">
 							Cancel
 						</Button>
-						<Button type="submit" size="lg" loading={busy} loadingText="Creating…" iconRight={<ArrowRight />}>
-							Create your bounty
+						<Button
+							type="submit"
+							size="lg"
+							loading={busy}
+							loadingText={LIVE || initial ? "Saving…" : "Creating…"}
+							iconRight={<ArrowRight />}
+						>
+							{initial ? "Save changes" : "Create your bounty"}
 						</Button>
 					</div>
-					<p className="text-center text-[10px] text-muted">Creating this preview bounty does not submit a real contract call.</p>
+					<p className="text-center text-[10px] text-muted">
+						{LIVE
+							? "This saves a draft. Nothing is on Stellar until you publish and fund it on the next screen."
+							: "Creating this preview bounty does not submit a real Stellar transaction."}
+					</p>
 				</div>
 			</form>
 		</>
