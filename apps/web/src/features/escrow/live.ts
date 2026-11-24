@@ -310,20 +310,27 @@ export function createLiveActions(set: Set, get: Get): Partial<AppState> {
 		setSimulateFailures: () => {},
 
 		connect: async (provider, role) => {
+			// Which step failed matters when someone reports it ("after signing in" vs "before the wallet opened").
+			let step = `Connecting to ${walletName(provider)}`;
+			set({ connectError: null });
 			try {
 				const address = await getWalletAddress(provider);
+				step = "Checking the network";
 				const network = get().network ?? (await api.network());
 				set({ network });
 				const walletPassphrase = await getWalletPassphrase(provider);
 				if (walletPassphrase && walletPassphrase !== network.networkPassphrase) {
-					toast.error(`Switch ${walletName(provider)} to Testnet`, {
-						description: "Your wallet is on a different Stellar network. Boluck runs on Stellar Testnet.",
-					});
+					const message = "Your wallet is on a different Stellar network. Switch it to Testnet and try again.";
+					set({ connectError: { wallet: provider, step, message } });
+					toast.error(`Switch ${walletName(provider)} to Testnet`, { description: message });
 					return false;
 				}
 				if (Date.now() < get().cooldownUntil) throw new ApiError("Too many sign-in attempts. Wait a moment and try again.", 429);
+				step = "Getting the sign-in request from Boluck";
 				const challenge = await api.challenge(address);
+				step = `Signing in with ${walletName(provider)}`;
 				const signed = await signWithWallet(provider, challenge.transaction, challenge.networkPassphrase, address);
+				step = "Verifying the signature with Boluck";
 				const session = await api.verify(signed);
 				setToken(session.walletToken);
 				set({
@@ -346,6 +353,7 @@ export function createLiveActions(set: Set, get: Get): Partial<AppState> {
 				if (e instanceof WalletRejected) {
 					toast.warning("Connection cancelled", { description: `Nothing was signed in ${walletName(provider)}.` });
 				} else {
+					set({ connectError: { wallet: provider, step, message: errorMessage(e) } });
 					toast.error(`Couldn't connect ${walletName(provider)}`, { description: errorMessage(e) });
 				}
 				return false;

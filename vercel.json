@@ -8,11 +8,42 @@
     "web": {
       "root": "apps/web",
       "framework": "nextjs"
+    },
+    "admin": {
+      "root": "apps/admin",
+      "framework": "nextjs"
     }
   },
   "rewrites": [
-    { "source": "/app", "destination": { "service": "web" } },
-    { "source": "/app/(.*)", "destination": { "service": "web" } },
-    { "source": "/(.*)", "destination": { "service": "landing" } }
+    {
+      "source": "/app",
+      "destination": {
+        "service": "web"
+      }
+    },
+    {
+      "source": "/app/(.*)",
+      "destination": {
+        "service": "web"
+      }
+    },
+    {
+      "source": "/admin",
+      "destination": {
+        "service": "admin"
+      }
+    },
+    {
+      "source": "/admin/(.*)",
+      "destination": {
+        "service": "admin"
+      }
+    },
+    {
+      "source": "/(.*)",
+      "destination": {
+        "service": "landing"
+      }
+    }
   ]
 }

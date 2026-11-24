@@ -151,6 +151,55 @@ async function selectWallet(id: WalletId): Promise<Loaded> {
 	return loaded;
 }
 
+/* ---------- Varial browser extension (direct) ---------- */
+
+/**
+ * The Varial extension is used through `@stellar/freighter-api` directly instead of the kit's module. The extension's
+ * page script forwards every request to its background worker, which Chrome puts to sleep when idle; waking it can
+ * take longer than the 2-second limit freighter-api gives the "is it installed?" probe. The kit runs that probe
+ * before every call, so a sleeping extension looked "not installed" and refused to connect. Here the probe is retried
+ * while the worker wakes, and the real requests (access, signing) carry no such limit.
+ */
+const varialApi = () => import("@stellar/freighter-api");
+
+/** True when the extension answers, retrying while its background worker wakes up (about 6 s at most). */
+async function probeVarial(attempts = 3): Promise<boolean> {
+	const { isConnected } = await varialApi();
+	for (let i = 0; i < attempts; i++) {
+		try {
+			const r = await isConnected();
+			if (!r.error && r.isConnected) return true;
+		} catch {
+			// keep trying
+		}
+		if (i < attempts - 1) await new Promise((r) => setTimeout(r, 400));
+	}
+	return false;
+}
+
+/** freighter-api returns `{ error }` instead of throwing; turn it into one of our errors. */
+function varialError(error: unknown): Error {
+	const msg = messageOf(error);
+	return looksRejected(msg) ? new WalletRejected(msg) : new Error(`Varial: ${msg}`);
+}
+
+async function varialAddress(): Promise<string> {
+	if (!(await probeVarial())) throw new WalletNotInstalled("The Varial extension didn't answer.");
+	const { requestAccess } = await varialApi();
+	const r = await requestAccess();
+	if (r.error) throw varialError(r.error);
+	if (!r.address) throw new WalletRejected("Varial didn't share an address.");
+	return r.address;
+}
+
+async function varialSign(xdr: string, networkPassphrase: string, address: string): Promise<string> {
+	const { signTransaction } = await varialApi();
+	const r = await signTransaction(xdr, { networkPassphrase, address });
+	if (r.error) throw varialError(r.error);
+	if (!r.signedTxXdr) throw new WalletRejected("Varial didn't return a signature.");
+	return r.signedTxXdr;
+}
+
 /* ---------- errors ---------- */
 
 /** Thrown when the person closes or declines the wallet prompt. */
@@ -179,16 +228,22 @@ function normalise(e: unknown): Error {
 /** Which wallets this browser can use right now. Varial Mobile needs nothing installed on this page. */
 export async function walletAvailability(): Promise<Partial<Record<WalletId, boolean>>> {
 	if (testWallet()) return Object.fromEntries(WALLETS.map((w) => [w.id, true]));
-	let supported: { id: string; isAvailable: boolean }[] = [];
-	try {
-		supported = await (await getKit()).kit.refreshSupportedWallets();
-	} catch {
-		// The kit couldn't load (blocked script, old browser): everything shows as not detected.
-	}
+	// Both at once: the Varial probe can take a few seconds when the extension is asleep or missing.
+	const [supported, varial] = await Promise.all([
+		getKit()
+			.then(({ kit }) => kit.refreshSupportedWallets())
+			// The kit couldn't load (blocked script, old browser): everything shows as not detected.
+			.catch(() => [] as { id: string; isAvailable: boolean }[]),
+		probeVarial().catch(() => false),
+	]);
 	return Object.fromEntries(
 		WALLETS.map((w) => [
 			w.id,
-			w.id === "varial_mobile" ? supported.length > 0 : supported.some((s) => s.id === KIT_ID[w.id] && s.isAvailable),
+			w.id === "freighter"
+				? varial
+				: w.id === "varial_mobile"
+					? supported.length > 0
+					: supported.some((s) => s.id === KIT_ID[w.id] && s.isAvailable),
 		]),
 	);
 }
@@ -290,6 +345,7 @@ export async function getWalletAddress(id: WalletId): Promise<string> {
 	const t = testWallet();
 	if (t) return t.address;
 	try {
+		if (id === "freighter") return await varialAddress();
 		if (id === "varial_mobile") assertSecureContext();
 		const { kit, walletConnect } = await selectWallet(id);
 		if (id !== "varial_mobile") return (await kit.fetchAddress()).address;
@@ -308,6 +364,10 @@ export async function getCurrentAddress(id: WalletId): Promise<string | undefine
 	const t = testWallet();
 	if (t) return t.address;
 	try {
+		if (id === "freighter") {
+			const r = await (await varialApi()).getAddress();
+			return r.error ? undefined : r.address || undefined;
+		}
 		const { kit } = await selectWallet(id);
 		return (await kit.getAddress()).address;
 	} catch {
@@ -321,6 +381,10 @@ export async function getWalletPassphrase(id: WalletId): Promise<string | undefi
 	if (t) return t.networkPassphrase;
 	if (id === "varial_mobile") return undefined;
 	try {
+		if (id === "freighter") {
+			const r = await (await varialApi()).getNetwork();
+			return r.error ? undefined : r.networkPassphrase || undefined;
+		}
 		const { kit } = await selectWallet(id);
 		return (await kit.getNetwork()).networkPassphrase || undefined;
 	} catch {
@@ -333,6 +397,7 @@ export async function signWithWallet(id: WalletId, xdr: string, networkPassphras
 	const t = testWallet();
 	if (t) return t.sign(xdr, networkPassphrase);
 	try {
+		if (id === "freighter") return await varialSign(xdr, networkPassphrase || NETWORK_PASSPHRASE, address);
 		const { kit } = await selectWallet(id);
 		const pending = kit.signTransaction(xdr, { networkPassphrase: networkPassphrase || NETWORK_PASSPHRASE, address });
 		if (id === "varial_mobile") window.setTimeout(() => void openWalletApp(), 400); // after the request is on the relay

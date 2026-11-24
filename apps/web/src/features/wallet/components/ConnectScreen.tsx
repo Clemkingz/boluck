@@ -33,8 +33,9 @@ export function ConnectScreen() {
 					<ArrowLeft className="size-4" /> Back to site
 				</a>
 			</header>
-			<main className="container-page grid flex-1 place-items-center py-8">
-				<div className="w-full max-w-[440px] animate-fade-up">
+			{/* minmax(0,1fr): the column may shrink below its content's width, so nothing pushes the page sideways. */}
+			<main className="container-page grid flex-1 grid-cols-[minmax(0,1fr)] place-items-center py-8">
+				<div className="w-full max-w-[440px] min-w-0 animate-fade-up">
 					<ConnectPanel redirectTo={redirectTo} initialRole={role} autoStart={autoStart} />
 				</div>
 			</main>

@@ -52,6 +52,7 @@ export function ConnectPanel({
 	const wallet = useAppStore((s) => s.wallet);
 	const connect = useAppStore((s) => s.connect);
 	const disconnect = useAppStore((s) => s.disconnect);
+	const connectError = useAppStore((s) => s.connectError);
 	const [role, setRole] = useState<Role>(initialRole);
 	const [failed, setFailed] = useState<WalletId | null>(null);
 	const [installed, setInstalled] = useState<WalletId[]>([]);
@@ -133,12 +134,17 @@ export function ConnectPanel({
 	};
 
 	return (
-		<aside className={cn("rounded-[var(--radius-xl)] border border-line bg-surface/90 p-5 backdrop-blur-md sm:p-8", className)}>
-			<div className="flex items-start gap-4">
+		<aside
+			className={cn(
+				"min-w-0 rounded-[var(--radius-xl)] border border-line bg-surface/90 p-4 backdrop-blur-md min-[360px]:p-5 sm:p-8",
+				className,
+			)}
+		>
+			<div className="flex items-start gap-3 min-[360px]:gap-4">
 				<IconTile size="lg">
 					<Wallet />
 				</IconTile>
-				<div>
+				<div className="min-w-0">
 					<h2 className="font-display text-xl font-bold tracking-[-0.02em] text-ink sm:text-2xl">Connect your wallet</h2>
 					<p className="mt-1 text-sm text-muted">Your Stellar wallet is your Boluck account — no email or password.</p>
 				</div>
@@ -170,13 +176,14 @@ export function ConnectPanel({
 							<Button
 								fullWidth
 								size="lg"
+								className="h-auto min-h-11 py-2.5 text-center"
 								loading={connecting === picked}
 								loadingText="Check your wallet…"
 								disabled={!!connecting}
 								onClick={() => void choose(WALLETS.find((w) => w.id === picked)!)}
 								iconRight={<ArrowRight />}
 							>
-								Continue with {walletName(picked)} as {role}
+								<span className="whitespace-normal">Continue with {walletName(picked)}</span>
 							</Button>
 							<p className="mt-2 text-center text-[10px] text-muted">
 								Your wallet asks you to sign a sign-in request. It moves no funds.
@@ -219,7 +226,7 @@ export function ConnectPanel({
 										disabled={!!connecting}
 										aria-busy={connecting === w.id}
 										className={cn(
-											"group flex w-full items-center gap-3 rounded-[var(--radius-md)] border p-4 text-left transition-all duration-200 hover:-translate-y-px disabled:cursor-wait disabled:opacity-70 disabled:hover:translate-y-0",
+											"group flex w-full items-center gap-2.5 rounded-[var(--radius-md)] border p-3 text-left min-[360px]:gap-3 min-[360px]:p-4 transition-all duration-200 hover:-translate-y-px disabled:cursor-wait disabled:opacity-70 disabled:hover:translate-y-0",
 											w.recommended || picked === w.id
 												? "border-primary bg-deep/50 hover:bg-deep/70"
 												: "border-line bg-canvas/40 hover:border-subtle",
@@ -229,7 +236,7 @@ export function ConnectPanel({
 											{w.name[0]}
 										</span>
 										<span className="min-w-0 flex-1">
-											<span className="flex items-center gap-2 text-sm font-semibold text-ink">
+											<span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm font-semibold text-ink">
 												{w.name}
 												{w.recommended && (
 													<span className="rounded-full bg-review/20 px-1.5 py-0.5 text-[7px] font-semibold tracking-wide text-review uppercase">
@@ -237,14 +244,14 @@ export function ConnectPanel({
 													</span>
 												)}
 											</span>
-											<span className="block text-[10px] text-muted">{w.kind}</span>
+											<span className="block truncate text-[10px] text-muted">{w.kind}</span>
 										</span>
 										{connecting === w.id ? (
-											<span className="flex items-center gap-1.5 text-[10px] font-semibold text-primary">
+											<span className="flex max-w-[40%] shrink-0 items-center gap-1.5 text-right text-[10px] font-semibold text-primary">
 												<Spinner className="size-3.5" /> Check your wallet
 											</span>
 										) : ready ? (
-											<span className="flex items-center gap-1.5 text-[10px] font-semibold text-primary">
+											<span className="flex max-w-[40%] shrink-0 items-center gap-1.5 text-right text-[10px] font-semibold text-primary">
 												<span className="size-1.5 rounded-full bg-primary" />{" "}
 												{!LIVE
 													? "Ready"
@@ -259,7 +266,7 @@ export function ConnectPanel({
 															: "Detected"}
 											</span>
 										) : LIVE && w.id === "freighter" ? (
-											<span className="flex items-center gap-1 text-[10px] text-muted transition-colors group-hover:text-ink">
+											<span className="max-w-[40%] shrink-0 text-right text-[10px] leading-tight text-muted transition-colors group-hover:text-ink">
 												Not detected · try anyway
 											</span>
 										) : (
@@ -272,6 +279,28 @@ export function ConnectPanel({
 							);
 						})}
 					</ul>
+
+					{LIVE && connectError && !connecting && failed !== connectError.wallet && (
+						<div
+							className="mt-5 animate-pop-in rounded-[var(--radius-md)] border border-attention/80 bg-attention/10 p-4 sm:p-5"
+							role="alert"
+						>
+							<p className="flex items-center gap-2 text-sm font-semibold text-ink">
+								<AlertTriangle className="size-4 shrink-0 text-attention" /> Couldn&apos;t connect{" "}
+								{walletName(connectError.wallet)}
+							</p>
+							<p className="mt-2 text-[10px] leading-relaxed text-muted sm:text-xs">
+								<span className="font-semibold text-ink">{connectError.step}:</span>{" "}
+								<span className="break-words">{connectError.message}</span>
+							</p>
+							<button
+								onClick={() => void choose(WALLETS.find((w) => w.id === connectError.wallet)!)}
+								className="mt-3 text-xs font-semibold text-primary hover:underline"
+							>
+								Try again
+							</button>
+						</div>
+					)}
 
 					{LIVE && appMissing && (
 						<div className="mt-5 animate-pop-in rounded-[var(--radius-md)] border border-review/70 bg-review/10 p-5" role="alert">

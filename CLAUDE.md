@@ -20,6 +20,7 @@ Turborepo + pnpm 12 (`packageManager`), Node ≥ 22.
 ```
 apps/landing/       (:3002) public site, PRD Screen 1 (hero + wallet chooser that hands off to the app)
 apps/web/           (:3000) the app: /connect, /overview, /bounties/*, /history, /refunds, /settings
+apps/admin/         (:3001) admin console (wallet sign-in + backend admin allow-list): /, /bounties, /transactions, /wallets, /system
 packages/ui/        @repo/ui — design tokens (globals.css), components, brand, motion, toasts
 packages/stellar/   @repo/stellar — bounty model, escrow rules (+ tests), status metadata, network, assets, formatting
 packages/eslint-config, packages/typescript-config
@@ -30,8 +31,9 @@ packages/eslint-config, packages/typescript-config
 
 ## Deployment (Vercel Services)
 
-One Vercel project, routed by the root `vercel.json`: `/app` and `/app/*` → `apps/web`, everything else →
-`apps/landing`. `apps/web` sets `basePath: "/app"` on every Vercel build (`VERCEL` is set); set `APP_BASE_PATH=""`
+One Vercel project, routed by the root `vercel.json`: `/app` and `/app/*` → `apps/web`, `/admin` and `/admin/*` →
+`apps/admin`, everything else → `apps/landing`. Both apps proxy `/api/v1/*` to the backend on their own origin
+(`next.config.ts` rewrites, `API_PROXY_TARGET`), so the browser never makes a cross-origin call. `apps/web` sets `basePath: "/app"` on every Vercel build (`VERCEL` is set); set `APP_BASE_PATH=""`
 once the app has its own domain. Landing links into the app with plain `<a>`s to `APP_URL` and redirects bare app
 paths (`/overview`, `/bounties/*`…) to `/app/…`. Turborepo only passes declared env vars to builds (`turbo.json`).
 

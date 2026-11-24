@@ -143,6 +143,8 @@ export interface AppState {
 	 * wallet's extension didn't answer (not installed or disabled).
 	 */
 	connect: (provider: WalletId, role: Role) => Promise<boolean | "missing">;
+	/** Live: why the last connection attempt failed (shown in the connect panel), with the step it failed at. */
+	connectError: { wallet: WalletId; step: string; message: string } | null;
 	disconnect: () => void;
 	setRole: (role: Role) => void;
 	setSimulateFailures: (value: boolean) => void;
@@ -282,6 +284,7 @@ export const useAppStore = create<AppState>()(
 				cooldownUntil: 0,
 				fieldErrors: {},
 				clearFieldErrors: () => {},
+				connectError: null,
 				refresh: async () => {},
 				loadBounty: async () => {},
 				markNotificationsRead: async () => {},

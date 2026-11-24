@@ -6,7 +6,7 @@ import { Button } from "@repo/ui/button";
 import { DetailRows, Panel } from "@repo/ui/panel";
 import { RoleToggle } from "@/features/overview/Overview";
 import { NETWORK_LABEL } from "@repo/stellar/network";
-import { API_URL, LIVE } from "@/lib/api/config";
+import { API_ORIGIN_LABEL, API_URL, LIVE } from "@/lib/api/config";
 import { walletName } from "@/features/wallet/wallets";
 import { formatAmount, shortAddress } from "@repo/stellar/format";
 import { ACCOUNT_NAMES, DEMO_ACCOUNTS } from "@/lib/api/mock-data";
@@ -93,7 +93,14 @@ export function SettingsView() {
 										{ label: "Payments", value: config.configured ? "Available" : "Temporarily unavailable" },
 									]
 								: []),
-							{ label: "Data source", value: LIVE ? API_URL.replace(/^https?:\/\//, "") : "Mock data · this browser" },
+							{
+								label: "Data source",
+								value: LIVE
+									? API_URL.startsWith("http")
+										? API_URL.replace(/^https?:\/\//, "")
+										: API_ORIGIN_LABEL
+									: "Mock data · this browser",
+							},
 						]}
 					/>
 				</Panel>
