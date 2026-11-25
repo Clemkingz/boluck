@@ -52,6 +52,9 @@ The app is connected to the Boluck API (Railway) and real Stellar wallets on Tes
   with a preflight request once deployed.
 - Guide vs. backend note on `auto_release`: the guide (§7) shows it to the contributor as a "Claim payment"
   fallback; the app does that only when the server lists it in `availableActions`.
-- **Admin (in progress, 2026-11-24):** the backend shipped `/api/v1/admin/*`. `apps/admin` has wallet sign-in, the
-  allow-list check (`GET /admin/me`, NOT_ADMIN → signed out) and the console shell. The data screens wait on the
-  response shapes, which aren't in the spec: an allow-listed test wallet (or the backend's admin docs) is needed.
+- **Admin (built, 2026-11-25):** `apps/admin` on `/api/v1/admin/*`. Wallet sign-in + `GET /admin/me` allow-list
+  check (NOT_ADMIN → signed out). Screens: Overview (totals, funds, attention flags, transaction health, status
+  breakdown), Bounties (search, status/flag filters, detail with submissions, timeline, activity, transactions,
+  retry auto-release), Transactions (filters, stuck / not-applied, re-check on Stellar), Wallets (search, detail,
+  sign out everywhere), System (services, arbiter, rules, worker, indexer, run worker now). Response types come from
+  live responses; the backend spec still doesn't describe them.

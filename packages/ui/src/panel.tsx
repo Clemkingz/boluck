@@ -69,8 +69,9 @@ export function DetailRows({ rows, className }: { rows: { label: string; value: 
 		<dl className={cn("space-y-0", className)}>
 			{rows.map((r) => (
 				<div key={r.label} className="flex items-center justify-between gap-4 py-2.5 text-sm">
-					<dt className="text-muted">{r.label}</dt>
-					<dd className="min-w-0 truncate text-right font-medium text-ink">{r.value}</dd>
+					<dt className="shrink-0 text-muted">{r.label}</dt>
+					{/* Wraps instead of truncating, so dates and amounts stay readable on 280px screens. */}
+					<dd className="min-w-0 text-right font-medium break-words text-ink">{r.value}</dd>
 				</div>
 			))}
 		</dl>

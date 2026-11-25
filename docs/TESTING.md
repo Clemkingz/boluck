@@ -44,3 +44,8 @@ after reload; non-party bounty shows not-found — 22/22 passing.
 
 **Demo**: landing → xBull hand-off → overview; create → fund → assign → accept → submit → approve & release;
 wallet reject; refund; agreement gate; history; failure simulation; 404 — 14/14 passing.
+
+**Admin console** (2026-11-25): signed in through the allow-list against the live API on 2026-11-24 (every read
+endpoint, plus the four actions on test data). Full browser run against mocked responses with those shapes:
+admin gate, overview → flag filter, pagination, retry auto-release, re-check a stuck transaction, sign a wallet out
+everywhere, run the worker — all passing; no horizontal overflow on any admin screen at 280, 320 or 375px.
