@@ -16,9 +16,9 @@ const variants: Record<Variant, string> = {
 };
 
 const sizes: Record<Size, string> = {
-	sm: "h-8 px-3 text-xs gap-1.5 [&_svg]:size-3.5",
-	md: "h-9 px-4 text-sm gap-2 [&_svg]:size-4",
-	lg: "h-11 px-5 text-[15px] gap-2 [&_svg]:size-[18px]",
+	sm: "min-h-8 px-3 py-1.5 text-xs gap-1.5 [&_svg]:size-3.5",
+	md: "min-h-9 px-4 py-2 text-sm gap-2 [&_svg]:size-4",
+	lg: "min-h-11 px-5 py-2.5 text-[15px] gap-2 [&_svg]:size-[18px]",
 };
 
 interface Common {
@@ -37,7 +37,9 @@ export function buttonClasses({
 	fullWidth,
 }: Pick<Common, "variant" | "size" | "fullWidth"> = {}) {
 	return cn(
-		"group/btn relative inline-flex shrink-0 select-none items-center justify-center rounded-[var(--radius-sm)] font-medium whitespace-nowrap",
+		// Never wider than its container: a long label wraps onto a second line (the button grows taller) instead of
+		// spilling out on narrow screens. On wide screens labels stay on one line as before.
+		"group/btn relative inline-flex max-w-full min-w-0 select-none items-center justify-center rounded-[var(--radius-sm)] text-center leading-tight font-medium [text-wrap:balance] [&_svg]:shrink-0",
 		"transition-[background-color,border-color,color,box-shadow,transform] duration-150 active:scale-[0.98]",
 		"disabled:pointer-events-none disabled:opacity-45",
 		variants[variant],

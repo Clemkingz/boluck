@@ -231,14 +231,16 @@ export const describe = (v: unknown) => (v === null || v === undefined ? "" : ty
 /* ---------- lists ---------- */
 
 /**
- * Rows that read as a table on wide screens and stack as cards on phones (no sideways scrolling at 280px).
- * `cols` sets the wide-screen grid; each cell can carry a `label` shown only when stacked.
+ * Rows that read as a table when the list has room and stack as cards when it doesn't (no sideways scrolling at
+ * 280px). `cols` sets the table grid; each cell can carry a `label` shown only when stacked.
  */
 export function Rows({ head, cols, children }: { head: string[]; cols: string; children: ReactNode }) {
 	return (
-		<div className="min-w-0">
+		// A container query, not the screen width: the same list sits full-width on its own page but in a narrow column
+		// on detail pages, and should only become a table when it has room (48rem).
+		<div className="@container min-w-0">
 			<div
-				className="hidden gap-4 border-b border-line px-4 pb-3 text-[10px] font-semibold tracking-wide text-muted uppercase lg:grid"
+				className="hidden gap-4 border-b border-line px-4 pb-3 text-[10px] font-semibold tracking-wide text-muted uppercase @3xl:grid"
 				style={{ gridTemplateColumns: cols }}
 			>
 				{head.map((h) => (
@@ -255,7 +257,7 @@ export function Row({ cols, href, children }: { cols: string; href?: string; chi
 	return (
 		<li
 			className={cn(
-				"grid min-w-0 grid-cols-1 gap-2 px-4 py-3.5 text-sm lg:[grid-template-columns:var(--cols)] lg:items-center lg:gap-4",
+				"grid min-w-0 grid-cols-1 gap-2 px-4 py-3.5 text-sm @3xl:[grid-template-columns:var(--cols)] @3xl:items-center @3xl:gap-4",
 				href && "cursor-pointer transition-colors hover:bg-elevated/40",
 			)}
 			style={{ "--cols": cols } as React.CSSProperties}
@@ -269,9 +271,9 @@ export function Row({ cols, href, children }: { cols: string; href?: string; chi
 /** A cell with a label that only shows when rows are stacked (phones). */
 export function Cell({ label, children, className }: { label?: string; children: ReactNode; className?: string }) {
 	return (
-		<div className={cn("flex min-w-0 items-center justify-between gap-3 lg:block", className)}>
-			{label && <span className="shrink-0 text-[10px] text-muted lg:hidden">{label}</span>}
-			<div className="min-w-0 text-right lg:text-left">{children}</div>
+		<div className={cn("flex min-w-0 items-center justify-between gap-3 @3xl:block", className)}>
+			{label && <span className="shrink-0 text-[10px] text-muted @3xl:hidden">{label}</span>}
+			<div className="min-w-0 text-right @3xl:text-left">{children}</div>
 		</div>
 	);
 }

@@ -126,10 +126,10 @@ function IssuerOverview() {
 						Funds stay in escrow until you approve the work. No chasing, and no uncertainty for your contributors.
 					</p>
 					<div className="mt-6 flex flex-wrap gap-4">
-						<ButtonLink href="/bounties/new" size="sm" iconRight={<ArrowRight />} className="h-8">
+						<ButtonLink href="/bounties/new" size="sm" iconRight={<ArrowRight />}>
 							Post a bounty
 						</ButtonLink>
-						<ButtonLink href="/bounties?filter=issued" size="sm" variant="secondary" className="h-8">
+						<ButtonLink href="/bounties?filter=issued" size="sm" variant="secondary">
 							Your bounties
 						</ButtonLink>
 					</div>
@@ -272,7 +272,7 @@ function ContributorOverview() {
 					<p className="mt-4 text-[15px] leading-7 text-muted sm:text-base">
 						Check the brief, deadline, acceptance criteria, and verified escrow before you accept an assignment.
 					</p>
-					<ButtonLink href="/bounties?filter=assigned" size="sm" iconRight={<ArrowRight />} className="mt-6 h-9">
+					<ButtonLink href="/bounties?filter=assigned" size="sm" iconRight={<ArrowRight />} className="mt-6 min-h-9">
 						Your assignments
 					</ButtonLink>
 				</div>

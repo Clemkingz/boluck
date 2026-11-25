@@ -105,7 +105,7 @@ export function ReviewSubmission({ params }: { params: BountyParams }) {
 									</ButtonLink>
 								</Notice>
 							) : (
-								<div className="grid gap-4 sm:grid-cols-[1.15fr_1fr]">
+								<div className="grid gap-3 sm:gap-4 xl:grid-cols-[1.15fr_1fr]">
 									<Button
 										size="lg"
 										icon={<BadgeCheck />}

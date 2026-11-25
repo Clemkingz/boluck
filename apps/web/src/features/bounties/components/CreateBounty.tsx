@@ -300,8 +300,9 @@ export function CreateBountyForm({ initial }: { initial?: Bounty }) {
 						</ul>
 					</Panel>
 
-					<div className="grid grid-cols-[auto_1fr] gap-4">
-						<Button variant="secondary" size="lg" onClick={() => router.back()} className="px-8">
+					{/* Stacked on the narrowest phones, side by side from 360px. */}
+					<div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-[auto_1fr] min-[360px]:gap-4">
+						<Button variant="secondary" size="lg" onClick={() => router.back()} className="min-[360px]:px-8">
 							Cancel
 						</Button>
 						<Button

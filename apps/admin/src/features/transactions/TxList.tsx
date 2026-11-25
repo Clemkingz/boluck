@@ -131,7 +131,7 @@ export function TxRows({
 							<span className="text-xs text-muted">{when(t.createdAt)}</span>
 						</Cell>
 						{(problem || isOpen(t)) && (
-							<div className="flex flex-wrap items-center gap-3 lg:col-span-full">
+							<div className="flex flex-wrap items-center gap-3 @3xl:col-span-full">
 								{/* basis-40: on narrow screens the button drops below instead of squeezing the message. */}
 								{problem && <p className="min-w-0 flex-1 basis-40 text-xs break-words text-attention">{problem}</p>}
 								{isOpen(t) && <Reconcile tx={t} onDone={onChange} />}
